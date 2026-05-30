@@ -6,7 +6,7 @@
 # Adopt in your repo:
 #   jobs:
 #     bumblebee:
-#       uses: ignitesol/security-infra/.github/workflows/bumblebee-scan.yml@v1
+#       uses: ignitesol/ignitesol.security-infra/.github/workflows/bumblebee-scan.yml@v1
 #       secrets: inherit
 
 name: Bumblebee Scan
@@ -42,7 +42,7 @@ jobs:
       - name: Checkout security-infra (config + catalogs)
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
         with:
-          repository: ignitesol/security-infra
+          repository: ignitesol/ignitesol.security-infra
           path: .secinfra
 
       - name: Set up Go
@@ -99,7 +99,7 @@ jobs:
       - name: Checkout security-infra (scripts + templates)
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
         with:
-          repository: ignitesol/security-infra
+          repository: ignitesol/ignitesol.security-infra
           path: .secinfra
 
       - name: Checkout caller repo (for .security/config.yml)

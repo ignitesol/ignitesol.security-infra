@@ -18,7 +18,7 @@ And then in your `bumblebee` job, add a condition so it only runs on Mondays:
 ```yaml
   bumblebee:
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' && ... 
-    uses: ignitesol/security-infra/.github/workflows/bumblebee-scan.yml@v1
+    uses: ignitesol/ignitesol.security-infra/.github/workflows/bumblebee-scan.yml@v1
     secrets: inherit
 ```
 
@@ -35,10 +35,10 @@ on:
   workflow_dispatch:
 jobs:
   security:
-    uses: ignitesol/security-infra/.github/workflows/security-scan.yml@v1
+    uses: ignitesol/ignitesol.security-infra/.github/workflows/security-scan.yml@v1
     secrets: inherit
   licenses:
-    uses: ignitesol/security-infra/.github/workflows/license-tracker.yml@v1
+    uses: ignitesol/ignitesol.security-infra/.github/workflows/license-tracker.yml@v1
     secrets: inherit
 ```
 
@@ -49,7 +49,7 @@ on:
   workflow_dispatch:
 jobs:
   bumblebee:
-    uses: ignitesol/security-infra/.github/workflows/bumblebee-scan.yml@v1
+    uses: ignitesol/ignitesol.security-infra/.github/workflows/bumblebee-scan.yml@v1
     secrets: inherit
 ```
 

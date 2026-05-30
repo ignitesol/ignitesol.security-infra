@@ -107,13 +107,13 @@ permissions:
   id-token: write        # OIDC -> SES in the notify jobs
 jobs:
   security:
-    uses: ignitesol/security-infra/.github/workflows/security-scan.yml@v1
+    uses: ignitesol/ignitesol.security-infra/.github/workflows/security-scan.yml@v1
     secrets: inherit
   licenses:
-    uses: ignitesol/security-infra/.github/workflows/license-tracker.yml@v1
+    uses: ignitesol/ignitesol.security-infra/.github/workflows/license-tracker.yml@v1
     secrets: inherit
   bumblebee:
-    uses: ignitesol/security-infra/.github/workflows/bumblebee-scan.yml@v1
+    uses: ignitesol/ignitesol.security-infra/.github/workflows/bumblebee-scan.yml@v1
     secrets: inherit
 ```
 

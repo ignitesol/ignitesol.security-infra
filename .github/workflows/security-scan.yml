@@ -6,7 +6,7 @@
 # Adopt in your repo:
 #   jobs:
 #     security:
-#       uses: ignitesol/security-infra/.github/workflows/security-scan.yml@v1
+#       uses: ignitesol/ignitesol.security-infra/.github/workflows/security-scan.yml@v1
 #       secrets: inherit
 #
 # Optional inputs:
@@ -55,7 +55,7 @@ jobs:
       - name: Checkout security-infra config
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
         with:
-          repository: ignitesol/security-infra
+          repository: ignitesol/ignitesol.security-infra
           path: .secinfra
           sparse-checkout: config
 
@@ -145,7 +145,7 @@ jobs:
       - name: Checkout security-infra (scripts + templates)
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
         with:
-          repository: ignitesol/security-infra
+          repository: ignitesol/ignitesol.security-infra
           path: .secinfra
 
       - name: Checkout caller repo (for .security/config.yml)
