@@ -141,6 +141,9 @@ jobs:
     permissions:
       id-token: write   # OIDC → SES role
       contents: read
+    env:
+      # Promoted to job level so the if: condition on the OIDC step can read it
+      SECINFRA_SES_ROLE_ARN: ${{ secrets.SECINFRA_SES_ROLE_ARN }}
     steps:
       - name: Checkout security-infra (scripts + templates)
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
@@ -173,8 +176,6 @@ jobs:
         with:
           role-to-assume: ${{ secrets.SECINFRA_SES_ROLE_ARN }}
           aws-region: ${{ secrets.SECINFRA_SES_REGION || 'us-east-1' }}
-        env:
-          SECINFRA_SES_ROLE_ARN: ${{ secrets.SECINFRA_SES_ROLE_ARN }}
 
       - name: Send email report
         env:
