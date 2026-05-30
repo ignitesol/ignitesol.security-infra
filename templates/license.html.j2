@@ -1,0 +1,44 @@
+{% extends "base.html.j2" %}
+
+{% block title %}License / Dependency Tracker — {{ repo }}{% endblock %}
+
+{% block content %}
+<div class="summary-row">
+  <div class="stat">
+    <div class="num">{{ total_current }}</div>
+    <div class="label">Total deps (current)</div>
+  </div>
+  <div class="stat">
+    <div class="num">{{ added_count }}</div>
+    <div class="label">Added since last run</div>
+  </div>
+</div>
+
+{% if not has_added %}
+<p class="empty">No new dependencies added since the last run.</p>
+{% else %}
+{% for ecosystem, deps in by_ecosystem.items() %}
+<h2>{{ ecosystem }} ({{ deps | length }} new)</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Package</th>
+      <th>Version</th>
+      <th>License</th>
+      <th>SPDX ID</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for dep in deps %}
+    <tr>
+      <td><strong>{{ dep.name }}</strong></td>
+      <td><code>{{ dep.version }}</code></td>
+      <td>{{ dep.license }}</td>
+      <td><code>{{ dep.spdx_id or "—" }}</code></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endfor %}
+{% endif %}
+{% endblock %}

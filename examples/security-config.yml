@@ -1,0 +1,27 @@
+# Place this file in your repo at .security/config.yml
+# The security@ inbox is always CC'd by the workflows; you only need to set 'to'.
+
+email:
+  to:
+    - team-your-name@ignitesol.com   # replace with your team's address
+
+systems:
+  security: true
+  bumblebee: true
+  license: true
+
+license:
+  # Subset of ecosystems present in your repo
+  ecosystems:
+    - npm
+    - python
+    # - java
+
+  # Optional: override the install command per ecosystem
+  # install:
+  #   npm: "npm ci --ignore-scripts"
+  #   python: "pip install -r requirements.txt"
+  #   java: "mvn -q dependency:resolve"
+
+paths:
+  scan_root: "."

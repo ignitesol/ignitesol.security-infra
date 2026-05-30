@@ -1,0 +1,57 @@
+# Self-test CI for the security-infra repo itself.
+# Lints Python, runs unit tests (when added), and does a dry-run
+# of each report script against fixture data.
+
+name: Self-Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install --quiet ruff
+      - run: ruff check scripts/
+
+  dry-run:
+    name: Dry-run all report scripts
+    runs-on: ubuntu-latest
+    env:
+      SECINFRA_DRY_RUN: "1"
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install --quiet .
+
+      - name: Dry-run security_report (empty results)
+        run: |
+          mkdir -p /tmp/sec-results
+          echo '[]' > /tmp/sec-results/gitleaks.json
+          python -m secinfra.security_report \
+            --results-dir /tmp/sec-results \
+            --workspace .
+
+      - name: Dry-run bumblebee_report (no file)
+        run: |
+          mkdir -p /tmp/bee-results
+          python -m secinfra.bumblebee_report \
+            --results-dir /tmp/bee-results \
+            --workspace .
+
+      - name: Dry-run license_report (empty)
+        run: |
+          mkdir -p /tmp/lic-results
+          echo '{}' > /tmp/lic-results/licenses-current.json
+          python -m secinfra.license_report \
+            --results-dir /tmp/lic-results \
+            --workspace .

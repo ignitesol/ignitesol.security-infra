@@ -1,0 +1,51 @@
+{% extends "base.html.j2" %}
+
+{% block title %}Security Scan — {{ repo }}{% endblock %}
+
+{% block content %}
+<div class="summary-row">
+  <div class="stat">
+    <div class="num">{{ total }}</div>
+    <div class="label">Total findings</div>
+  </div>
+  {% for sev, count in counts.items() %}
+  <div class="stat">
+    <div class="num">{{ count }}</div>
+    <div class="label">{{ sev | capitalize }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+{% if not has_findings %}
+<p class="empty">No findings — clean scan.</p>
+{% else %}
+<h2>Top findings (up to 20)</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Severity</th>
+      <th>Tool</th>
+      <th>Rule</th>
+      <th>Location</th>
+      <th>Title</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for f in findings %}
+    <tr>
+      <td><span class="badge badge-{{ f.severity.value }}">{{ f.severity.value }}</span></td>
+      <td>{{ f.tool }}</td>
+      <td>
+        {% if f.url %}<a href="{{ f.url }}">{{ f.rule_id }}</a>{% else %}{{ f.rule_id }}{% endif %}
+      </td>
+      <td><code>{{ f.location }}</code></td>
+      <td>{{ f.title }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% if total > 20 %}
+<p style="font-size:13px;color:#57606a;margin-top:8px;">… and {{ total - 20 }} more. See the full run for details.</p>
+{% endif %}
+{% endif %}
+{% endblock %}

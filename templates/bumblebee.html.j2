@@ -1,0 +1,47 @@
+{% extends "base.html.j2" %}
+
+{% block title %}Bumblebee Exposure Scan — {{ repo }}{% endblock %}
+
+{% block content %}
+<div class="summary-row">
+  <div class="stat">
+    <div class="num">{{ component_count }}</div>
+    <div class="label">Components scanned</div>
+  </div>
+  <div class="stat">
+    <div class="num">{{ match_count }}</div>
+    <div class="label">Exposure matches</div>
+  </div>
+</div>
+
+{% if not has_matches %}
+<p class="empty">No exposure matches found against current threat-intel catalogs.</p>
+{% else %}
+<h2>Exposure matches</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Package</th>
+      <th>Version</th>
+      <th>Ecosystem</th>
+      <th>Campaign</th>
+      <th>Detail</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for m in matches %}
+    <tr>
+      <td><strong>{{ m.package }}</strong></td>
+      <td><code>{{ m.version }}</code></td>
+      <td>{{ m.ecosystem }}</td>
+      <td><span class="badge badge-match">{{ m.campaign }}</span></td>
+      <td>{{ m.detail }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p style="font-size:13px;color:#a4000f;margin-top:12px;font-weight:600;">
+  Action required: remove or replace the matched package(s) immediately.
+</p>
+{% endif %}
+{% endblock %}

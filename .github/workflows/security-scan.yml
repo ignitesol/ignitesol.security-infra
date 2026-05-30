@@ -1,0 +1,190 @@
+# System 1 — Security Scan (reusable workflow)
+#
+# Runs: Gitleaks (secrets) + Semgrep (SAST) + Trivy fs (SCA) + Trivy config (IaC)
+# Two-job pattern: scan (credential-less) → notify (SES + OIDC).
+#
+# Adopt in your repo:
+#   jobs:
+#     security:
+#       uses: ignitesol/security-infra/.github/workflows/security-scan.yml@v1
+#       secrets: inherit
+#
+# Optional inputs:
+#   scan_root    — directory to scan (default: .)
+#   semgrep_rules — override the central Semgrep ruleset ref
+
+name: Security Scan
+
+on:
+  workflow_call:
+    inputs:
+      scan_root:
+        description: Root directory to scan
+        type: string
+        default: "."
+      semgrep_rules:
+        description: Override Semgrep rules (leave blank to use org default)
+        type: string
+        default: ""
+    secrets:
+      SECINFRA_SES_ROLE_ARN:
+        required: false
+      SECINFRA_SES_FROM:
+        required: false
+      SECINFRA_SES_REGION:
+        required: false
+      SECINFRA_SECURITY_CC:
+        required: false
+
+jobs:
+  # ── Job 1: run all scanners, emit results artifact ──────────────────────────
+  scan:
+    name: Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read       # checkout only
+      security-events: write  # upload SARIF to GitHub Code Scanning
+    outputs:
+      results_artifact: security-results-${{ github.run_id }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout security-infra config
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+        with:
+          repository: ignitesol/security-infra
+          path: .secinfra
+          sparse-checkout: config
+
+      - name: Install tools
+        run: |
+          set -euo pipefail
+          # Gitleaks
+          GITLEAKS_VERSION="8.18.4"
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C /usr/local/bin gitleaks
+          # Semgrep
+          pip install --quiet semgrep
+          # Trivy
+          TRIVY_VERSION="0.51.4"
+          curl -sSfL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
+            | tar -xz -C /usr/local/bin trivy
+
+      - name: Create results directory
+        run: mkdir -p results
+
+      - name: Gitleaks — secrets scan
+        run: |
+          gitleaks detect \
+            --source "${{ inputs.scan_root }}" \
+            --config .secinfra/config/defaults/gitleaks.toml \
+            --report-format json \
+            --report-path results/gitleaks.json \
+            --exit-code 0 \
+            --log-level warn
+        continue-on-error: true
+
+      - name: Semgrep — SAST scan
+        env:
+          SEMGREP_RULES: ${{ inputs.semgrep_rules || 'p/default p/owasp-top-ten p/secrets' }}
+        run: |
+          semgrep \
+            --config "$SEMGREP_RULES" \
+            --sarif \
+            --output results/semgrep.sarif \
+            --no-autofix \
+            "${{ inputs.scan_root }}" \
+            || true
+        continue-on-error: true
+
+      - name: Trivy — SCA (dependency CVEs)
+        run: |
+          trivy fs \
+            --config .secinfra/config/defaults/trivy.yaml \
+            --scanners vuln \
+            --format json \
+            --output results/trivy-sca.json \
+            "${{ inputs.scan_root }}"
+        continue-on-error: true
+
+      - name: Trivy — IaC / container misconfig
+        run: |
+          trivy fs \
+            --config .secinfra/config/defaults/trivy.yaml \
+            --scanners misconfig \
+            --format json \
+            --output results/trivy-iac.json \
+            "${{ inputs.scan_root }}"
+        continue-on-error: true
+
+      - name: Upload SARIF to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results/semgrep.sarif
+        continue-on-error: true
+
+      - name: Upload results artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-results-${{ github.run_id }}
+          path: results/
+          retention-days: 7
+
+  # ── Job 2: notify — download artifact, render + send email ─────────────────
+  notify:
+    name: Notify
+    needs: scan
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # OIDC → SES role
+      contents: read
+    steps:
+      - name: Checkout security-infra (scripts + templates)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+        with:
+          repository: ignitesol/security-infra
+          path: .secinfra
+
+      - name: Checkout caller repo (for .security/config.yml)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+        with:
+          path: .caller-repo
+
+      - name: Download results artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: security-results-${{ github.run_id }}
+          path: results
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install secinfra
+        run: pip install --quiet .secinfra/
+
+      - name: Configure AWS credentials (OIDC → SES role)
+        if: ${{ env.SECINFRA_SES_ROLE_ARN != '' }}
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502  # v4
+        with:
+          role-to-assume: ${{ secrets.SECINFRA_SES_ROLE_ARN }}
+          aws-region: ${{ secrets.SECINFRA_SES_REGION || 'us-east-1' }}
+        env:
+          SECINFRA_SES_ROLE_ARN: ${{ secrets.SECINFRA_SES_ROLE_ARN }}
+
+      - name: Send email report
+        env:
+          GITHUB_WORKSPACE: .caller-repo
+          SECINFRA_SES_FROM: ${{ secrets.SECINFRA_SES_FROM }}
+          SECINFRA_SES_REGION: ${{ secrets.SECINFRA_SES_REGION || 'us-east-1' }}
+          SECINFRA_SECURITY_CC: ${{ secrets.SECINFRA_SECURITY_CC }}
+          # Dry-run until prerequisites land; remove once SES is configured
+          SECINFRA_DRY_RUN: ${{ secrets.SECINFRA_SES_ROLE_ARN == '' && '1' || '0' }}
+        run: |
+          python -m secinfra.security_report \
+            --results-dir results \
+            --workspace .caller-repo

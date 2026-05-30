@@ -1,0 +1,22 @@
+{% extends "base.txt.j2" %}
+{% block title %}Security Scan — {{ repo }}{% endblock %}
+{% block content %}
+Total findings: {{ total }}
+{% for sev, count in counts.items() %}  {{ sev | upper }}: {{ count }}
+{% endfor %}
+
+{% if not has_findings %}
+No findings — clean scan.
+{% else %}
+Top findings (up to 20):
+{% for f in findings %}
+[{{ f.severity.value | upper }}] {{ f.tool }} / {{ f.rule_id }}
+  Location : {{ f.location }}
+  Title    : {{ f.title }}
+  Message  : {{ f.message[:120] }}
+{% endfor %}
+{% if total > 20 %}
+... and {{ total - 20 }} more. See the full run.
+{% endif %}
+{% endif %}
+{% endblock %}

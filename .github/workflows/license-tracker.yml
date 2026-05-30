@@ -1,0 +1,246 @@
+# System 3 — License / Dependency Tracker (reusable workflow)
+#
+# Per-ecosystem: installs deps then runs license detection (npm, Python, Java).
+# Two-job pattern:
+#   scan  — credential-less; installs + detects; emits results artifact
+#   notify — contents:write + SES OIDC; diffs manifest, emails, commits manifest back
+#
+# Adopt in your repo:
+#   jobs:
+#     licenses:
+#       uses: ignitesol/security-infra/.github/workflows/license-tracker.yml@v1
+#       secrets: inherit
+
+name: License Tracker
+
+on:
+  workflow_call:
+    inputs:
+      ecosystems:
+        description: "Comma-separated list of ecosystems to scan: npm,python,java"
+        type: string
+        default: "npm,python,java"
+    secrets:
+      SECINFRA_SES_ROLE_ARN:
+        required: false
+      SECINFRA_SES_FROM:
+        required: false
+      SECINFRA_SES_REGION:
+        required: false
+      SECINFRA_SECURITY_CC:
+        required: false
+
+jobs:
+  # ── Job 1: install deps + detect licenses (no credentials) ──────────────────
+  scan:
+    name: Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout caller repo
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+
+      - name: Create results directory
+        run: mkdir -p results
+
+      # ── npm ──────────────────────────────────────────────────────────────────
+      - name: Set up Node
+        if: contains(inputs.ecosystems, 'npm')
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: npm — install
+        if: contains(inputs.ecosystems, 'npm') && hashFiles('package.json') != ''
+        run: npm ci --ignore-scripts
+        continue-on-error: true
+
+      - name: npm — detect licenses
+        if: contains(inputs.ecosystems, 'npm') && hashFiles('package.json') != ''
+        run: |
+          npm install --save-dev --ignore-scripts license-checker-rseidelsohn 2>/dev/null || true
+          npx --no license-checker-rseidelsohn \
+            --json \
+            --out results/npm-licenses-raw.json \
+            --excludePackages "" \
+            || true
+        continue-on-error: true
+
+      # ── Python ───────────────────────────────────────────────────────────────
+      - name: Set up Python
+        if: contains(inputs.ecosystems, 'python')
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Python — install
+        if: contains(inputs.ecosystems, 'python')
+        run: |
+          if [ -f pyproject.toml ] || [ -f setup.py ]; then
+            pip install --quiet . 2>/dev/null || true
+          fi
+          if [ -f requirements.txt ]; then
+            pip install --quiet -r requirements.txt 2>/dev/null || true
+          fi
+          if [ -f poetry.lock ]; then
+            pip install --quiet poetry && poetry install --no-root 2>/dev/null || true
+          fi
+        continue-on-error: true
+
+      - name: Python — detect licenses
+        if: contains(inputs.ecosystems, 'python')
+        run: |
+          pip install --quiet pip-licenses
+          pip-licenses --format=json --with-system --output-file results/python-licenses-raw.json \
+            || true
+        continue-on-error: true
+
+      # ── Java (Maven / Gradle) ────────────────────────────────────────────────
+      - name: Set up Java
+        if: contains(inputs.ecosystems, 'java')
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Java Maven — detect licenses
+        if: contains(inputs.ecosystems, 'java') && hashFiles('pom.xml') != ''
+        run: |
+          mvn --quiet org.codehaus.mojo:license-maven-plugin:2.4.0:download-licenses \
+            -DlicensesOutputFile=results/java-licenses-raw.json \
+            -DlicensesOutputFileFormat=json \
+            || true
+        continue-on-error: true
+
+      - name: Java Gradle — detect licenses
+        if: contains(inputs.ecosystems, 'java') && hashFiles('build.gradle', 'build.gradle.kts') != ''
+        run: |
+          if [ -f gradlew ]; then chmod +x gradlew; fi
+          ${GRADLEW:-./gradlew} --quiet generateLicenseReport \
+            || true
+          # Copy wherever the plugin writes; normalize in the next step
+        continue-on-error: true
+
+      # ── Normalize all raw outputs to unified JSON ─────────────────────────
+      - name: Normalize license outputs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const result = {};
+
+            // npm: { "pkg@ver": { licenses, ... } }
+            const npmRaw = 'results/npm-licenses-raw.json';
+            if (fs.existsSync(npmRaw)) {
+              const raw = JSON.parse(fs.readFileSync(npmRaw, 'utf8'));
+              result['npm'] = Object.entries(raw).map(([pkgver, info]) => {
+                const at = pkgver.lastIndexOf('@');
+                return {
+                  name: pkgver.substring(0, at),
+                  version: pkgver.substring(at + 1),
+                  license: Array.isArray(info.licenses) ? info.licenses.join(', ') : (info.licenses || 'Unknown'),
+                  spdx_id: Array.isArray(info.licenses) ? info.licenses[0] : (info.licenses || ''),
+                };
+              });
+            }
+
+            // Python: [{ Name, Version, License }]
+            const pyRaw = 'results/python-licenses-raw.json';
+            if (fs.existsSync(pyRaw)) {
+              const raw = JSON.parse(fs.readFileSync(pyRaw, 'utf8'));
+              result['python'] = raw.map(pkg => ({
+                name: pkg.Name,
+                version: pkg.Version,
+                license: pkg.License || 'Unknown',
+                spdx_id: pkg.License || '',
+              }));
+            }
+
+            // Java: normalize from license-maven-plugin JSON (best-effort)
+            const javaRaw = 'results/java-licenses-raw.json';
+            if (fs.existsSync(javaRaw)) {
+              try {
+                const raw = JSON.parse(fs.readFileSync(javaRaw, 'utf8'));
+                const deps = raw.dependencies || [];
+                result['java'] = deps.map(dep => ({
+                  name: `${dep.groupId}:${dep.artifactId}`,
+                  version: dep.version || '',
+                  license: (dep.licenses || []).map(l => l.name).join(', ') || 'Unknown',
+                  spdx_id: (dep.licenses || [])[0]?.url || '',
+                }));
+              } catch (e) {
+                console.log('Java license parse error (non-fatal):', e.message);
+              }
+            }
+
+            fs.writeFileSync('results/licenses-current.json', JSON.stringify(result, null, 2));
+            console.log('Normalized ecosystems:', Object.keys(result).join(', '));
+
+      - name: Upload results artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: license-results-${{ github.run_id }}
+          path: results/
+          retention-days: 7
+
+  # ── Job 2: notify + commit manifest ─────────────────────────────────────────
+  notify:
+    name: Notify
+    needs: scan
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write    # OIDC → SES role
+      contents: write    # commit refreshed manifest back to repo
+    steps:
+      - name: Checkout security-infra (scripts + templates)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+        with:
+          repository: ignitesol/security-infra
+          path: .secinfra
+
+      - name: Checkout caller repo
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+        with:
+          path: .caller-repo
+
+      - name: Download results artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: license-results-${{ github.run_id }}
+          path: results
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install secinfra
+        run: pip install --quiet .secinfra/
+
+      - name: Configure AWS credentials (OIDC → SES role)
+        if: ${{ env.SECINFRA_SES_ROLE_ARN != '' }}
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502  # v4
+        with:
+          role-to-assume: ${{ secrets.SECINFRA_SES_ROLE_ARN }}
+          aws-region: ${{ secrets.SECINFRA_SES_REGION || 'us-east-1' }}
+        env:
+          SECINFRA_SES_ROLE_ARN: ${{ secrets.SECINFRA_SES_ROLE_ARN }}
+
+      - name: Configure git for manifest commit
+        run: |
+          git -C .caller-repo config user.name  "secinfra-bot"
+          git -C .caller-repo config user.email "secinfra-bot@ignitesol.com"
+
+      - name: Send email report + commit manifest
+        env:
+          GITHUB_WORKSPACE: ${{ github.workspace }}/.caller-repo
+          SECINFRA_SES_FROM: ${{ secrets.SECINFRA_SES_FROM }}
+          SECINFRA_SES_REGION: ${{ secrets.SECINFRA_SES_REGION || 'us-east-1' }}
+          SECINFRA_SECURITY_CC: ${{ secrets.SECINFRA_SECURITY_CC }}
+          SECINFRA_DRY_RUN: ${{ secrets.SECINFRA_SES_ROLE_ARN == '' && '1' || '0' }}
+        run: |
+          python -m secinfra.license_report \
+            --results-dir results \
+            --workspace "${{ github.workspace }}/.caller-repo"

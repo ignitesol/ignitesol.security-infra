@@ -1,0 +1,19 @@
+{% extends "base.txt.j2" %}
+{% block title %}Bumblebee Exposure Scan — {{ repo }}{% endblock %}
+{% block content %}
+Components scanned : {{ component_count }}
+Exposure matches   : {{ match_count }}
+
+{% if not has_matches %}
+No exposure matches found against current threat-intel catalogs.
+{% else %}
+ACTION REQUIRED — remove or replace the matched package(s) immediately.
+
+Matches:
+{% for m in matches %}
+  {{ m.package }} {{ m.version }} ({{ m.ecosystem }})
+    Campaign : {{ m.campaign }}
+    Detail   : {{ m.detail }}
+{% endfor %}
+{% endif %}
+{% endblock %}

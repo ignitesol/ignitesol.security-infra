@@ -1,0 +1,19 @@
+# Default Gitleaks config used by System 1 secrets scan.
+# This extends the built-in ruleset and adds org-specific patterns.
+# See https://github.com/gitleaks/gitleaks
+
+title = "IgniteSol Gitleaks Config"
+
+# Inherit all built-in rules
+[extend]
+useDefault = true
+
+# Allow bot/test patterns to reduce false positives
+[[allowlist]]
+description = "Test / example patterns"
+regexes = [
+  '''example[_-]?api[_-]?key''',
+  '''REPLACE_WITH_YOUR''',
+  '''placeholder''',
+  '''YOUR_SECRET_HERE''',
+]

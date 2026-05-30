@@ -1,0 +1,19 @@
+{% extends "base.txt.j2" %}
+{% block title %}License / Dependency Tracker — {{ repo }}{% endblock %}
+{% block content %}
+Total dependencies (current) : {{ total_current }}
+Added since last run         : {{ added_count }}
+
+{% if not has_added %}
+No new dependencies added since the last run.
+{% else %}
+{% for ecosystem, deps in by_ecosystem.items() %}
+{{ ecosystem | upper }} — {{ deps | length }} new:
+{% for dep in deps %}
+  {{ dep.name }} {{ dep.version }}
+    License : {{ dep.license }}
+    SPDX    : {{ dep.spdx_id or "unknown" }}
+{% endfor %}
+{% endfor %}
+{% endif %}
+{% endblock %}

@@ -1,0 +1,22 @@
+# Default Trivy config used by System 1.
+# Applied to both fs (SCA) and config (IaC) scan modes.
+# See https://aquasecurity.github.io/trivy/latest/docs/references/configuration/config-file/
+
+severity:
+  - CRITICAL
+  - HIGH
+  - MEDIUM
+  - LOW
+
+exit-code: 0            # always exit 0; the notify job handles gating
+
+# Output format is set by the workflow (--format json); this file only carries
+# non-format options that persist across both scan modes.
+scan:
+  scanners:
+    - vuln
+    - misconfig
+    - secret
+
+vulnerability:
+  ignore-unfixed: false   # report unfixed vulns (reviewers triage)

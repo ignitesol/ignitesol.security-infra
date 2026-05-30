@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f6f8fa; margin: 0; padding: 24px; color: #24292f; }
+  .card { background: #fff; border-radius: 8px; border: 1px solid #d0d7de; max-width: 680px; margin: 0 auto; overflow: hidden; }
+  .header { background: #0d1117; color: #f0f6fc; padding: 20px 24px; }
+  .header h1 { margin: 0; font-size: 18px; font-weight: 600; }
+  .header .meta { margin: 4px 0 0; font-size: 13px; color: #8b949e; }
+  .body { padding: 24px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 8px 10px; background: #f6f8fa; border-bottom: 1px solid #d0d7de; color: #57606a; font-weight: 600; }
+  td { padding: 8px 10px; border-bottom: 1px solid #eaeef2; vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+  .badge-critical { background: #ffd3d3; color: #a4000f; }
+  .badge-high     { background: #ffe0b2; color: #8a3200; }
+  .badge-medium   { background: #fff8c5; color: #6e5700; }
+  .badge-low      { background: #dafbe1; color: #116329; }
+  .badge-info     { background: #ddf4ff; color: #0550ae; }
+  .badge-unknown  { background: #f6f8fa; color: #57606a; }
+  .badge-ok       { background: #dafbe1; color: #116329; }
+  .badge-match    { background: #ffd3d3; color: #a4000f; }
+  .footer { padding: 16px 24px; background: #f6f8fa; border-top: 1px solid #d0d7de; font-size: 12px; color: #57606a; }
+  .footer a { color: #0969da; text-decoration: none; }
+  .summary-row { display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+  .stat { background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 6px; padding: 12px 16px; flex: 1; min-width: 100px; }
+  .stat .num { font-size: 28px; font-weight: 700; }
+  .stat .label { font-size: 12px; color: #57606a; margin-top: 2px; }
+  h2 { font-size: 15px; font-weight: 600; margin: 20px 0 10px; color: #24292f; }
+  .empty { color: #57606a; font-size: 14px; padding: 16px 0; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="header">
+    <h1>{% block title %}IgniteSol Security{% endblock %}</h1>
+    <div class="meta">
+      {{ repo }} &middot; <code>{{ sha }}</code>
+      {% if run_url %}&nbsp;&middot;&nbsp;<a href="{{ run_url }}" style="color:#8b949e;">view run</a>{% endif %}
+    </div>
+  </div>
+  <div class="body">
+    {% block content %}{% endblock %}
+  </div>
+  <div class="footer">
+    Sent by <strong>ignitesol/security-infra</strong>.
+    {% if run_url %}<a href="{{ run_url }}">View full run &rarr;</a>{% endif %}
+  </div>
+</div>
+</body>
+</html>

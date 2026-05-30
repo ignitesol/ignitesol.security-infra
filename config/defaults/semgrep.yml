@@ -1,0 +1,8 @@
+# Default Semgrep config used by System 1 security scan.
+# Adopting repos can override by setting SEMGREP_RULES in their caller workflow.
+# See https://semgrep.dev/docs/running-rules/
+rules:
+  - "p/default"           # Semgrep-maintained, high-signal defaults
+  - "p/owasp-top-ten"     # OWASP Top 10 mappings
+  - "p/secrets"           # redundant with Gitleaks but adds depth-of-defense
+  - "p/supply-chain"      # supply-chain specific patterns

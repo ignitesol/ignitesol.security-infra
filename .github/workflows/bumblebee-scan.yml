@@ -1,0 +1,143 @@
+# System 2 — Bumblebee Supply-Chain Exposure Scan (reusable workflow)
+#
+# Runs bumblebee using the threat_intel catalogs pinned in config/catalog-pin.txt.
+# Two-job pattern: scan (credential-less) → notify (SES + OIDC).
+#
+# Adopt in your repo:
+#   jobs:
+#     bumblebee:
+#       uses: ignitesol/security-infra/.github/workflows/bumblebee-scan.yml@v1
+#       secrets: inherit
+
+name: Bumblebee Scan
+
+on:
+  workflow_call:
+    inputs:
+      scan_profile:
+        description: "Bumblebee scan profile: baseline | project | deep"
+        type: string
+        default: "project"
+    secrets:
+      SECINFRA_SES_ROLE_ARN:
+        required: false
+      SECINFRA_SES_FROM:
+        required: false
+      SECINFRA_SES_REGION:
+        required: false
+      SECINFRA_SECURITY_CC:
+        required: false
+
+jobs:
+  # ── Job 1: run bumblebee, emit NDJSON artifact ──────────────────────────────
+  scan:
+    name: Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout caller repo
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+
+      - name: Checkout security-infra (config + catalogs)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+        with:
+          repository: ignitesol/security-infra
+          path: .secinfra
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "stable"
+
+      - name: Install bumblebee at pinned commit
+        run: |
+          PIN=$(cat .secinfra/config/catalog-pin.txt | tr -d '[:space:]')
+          echo "Installing bumblebee @ $PIN"
+          go install "github.com/perplexityai/bumblebee/cmd/bumblebee@${PIN}"
+
+      - name: Fetch bumblebee catalogs at pinned commit
+        run: |
+          PIN=$(cat .secinfra/config/catalog-pin.txt | tr -d '[:space:]')
+          git clone --no-checkout https://github.com/perplexityai/bumblebee .bumblebee-src
+          git -C .bumblebee-src checkout "$PIN" -- threat_intel/
+          echo "Catalogs:"
+          ls .bumblebee-src/threat_intel/*.json
+
+      - name: Create results directory
+        run: mkdir -p results
+
+      - name: Run bumblebee
+        run: |
+          CATALOGS=""
+          for f in .bumblebee-src/threat_intel/*.json; do
+            CATALOGS="$CATALOGS --exposure-catalog $f"
+          done
+          bumblebee scan \
+            --profile "${{ inputs.scan_profile }}" \
+            --output results/bumblebee.ndjson \
+            $CATALOGS \
+            .
+        continue-on-error: true
+
+      - name: Upload results artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bumblebee-results-${{ github.run_id }}
+          path: results/
+          retention-days: 7
+
+  # ── Job 2: notify ────────────────────────────────────────────────────────────
+  notify:
+    name: Notify
+    needs: scan
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout security-infra (scripts + templates)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+        with:
+          repository: ignitesol/security-infra
+          path: .secinfra
+
+      - name: Checkout caller repo (for .security/config.yml)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+        with:
+          path: .caller-repo
+
+      - name: Download results artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: bumblebee-results-${{ github.run_id }}
+          path: results
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install secinfra
+        run: pip install --quiet .secinfra/
+
+      - name: Configure AWS credentials (OIDC → SES role)
+        if: ${{ env.SECINFRA_SES_ROLE_ARN != '' }}
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502  # v4
+        with:
+          role-to-assume: ${{ secrets.SECINFRA_SES_ROLE_ARN }}
+          aws-region: ${{ secrets.SECINFRA_SES_REGION || 'us-east-1' }}
+        env:
+          SECINFRA_SES_ROLE_ARN: ${{ secrets.SECINFRA_SES_ROLE_ARN }}
+
+      - name: Send email report
+        env:
+          GITHUB_WORKSPACE: .caller-repo
+          SECINFRA_SES_FROM: ${{ secrets.SECINFRA_SES_FROM }}
+          SECINFRA_SES_REGION: ${{ secrets.SECINFRA_SES_REGION || 'us-east-1' }}
+          SECINFRA_SECURITY_CC: ${{ secrets.SECINFRA_SECURITY_CC }}
+          SECINFRA_DRY_RUN: ${{ secrets.SECINFRA_SES_ROLE_ARN == '' && '1' || '0' }}
+        run: |
+          python -m secinfra.bumblebee_report \
+            --results-dir results \
+            --workspace .caller-repo
