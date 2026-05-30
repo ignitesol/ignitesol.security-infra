@@ -5,7 +5,9 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-_TEMPLATES_DIR = Path(__file__).parent.parent.parent.parent / "templates"
+# Two levels up from secinfra/common/render.py → secinfra/ → templates/
+# Works both in development and after pip install.
+_TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
 
 def _env() -> Environment:
