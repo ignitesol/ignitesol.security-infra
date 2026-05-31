@@ -128,7 +128,8 @@ jobs:
             --profile "${{ inputs.scan_profile }}" \
             --max-duration "${{ inputs.scan_max_duration }}" \
             $ROOTS \
-            --output results/bumblebee.ndjson \
+            --output file \
+            --output-file results/bumblebee.ndjson \
             $CATALOGS
         continue-on-error: true
 
