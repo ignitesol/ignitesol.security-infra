@@ -1,6 +1,6 @@
 # IgniteSol Security & Compliance Infrastructure — Plan
 
-> **Status:** Phase 2 complete (pending pilot PR merges). Phase 3 (org-wide adoption) is next.
+> **Status:** Phase 2 complete. Phase 3 (org-wide adoption) in progress.
 > **Owner:** Chief Security & Compliance Engineering.
 > **Repo:** `ignitesol/ignitesol.security-infra` — central home for reusable GitHub
 > Actions workflows, orchestration scripts, email templates, and pinned threat-intel
@@ -221,23 +221,14 @@ System 2 (bumblebee) is disabled in the pilot `compliance.yml` pending Phase 2.
 
 Merge ignite-email-service#87 and fizzy-metrics#3 to complete Phase 2.
 
-### Phase 3 — Org-wide adoption 🔜 after v1
+### Phase 3 — Org-wide adoption 🟡 in progress
 
 | Item | Status |
 |---|---|
-| Write `docs/ADOPTION.md` — team-facing import guide | ⬜ |
-| Write `docs/OPERATIONS.md` — runbook (catalog bumps, role rotation, troubleshooting) | ⬜ |
-| Announce to engineering leads; use `secinfra-onboard` for batch rollout | ⬜ |
-| Add compliance status badge to each adopted repo's README | ⬜ |
-
-**Phase 3 is still valid.** The `secinfra-onboard` CLI (added in Phase 1) makes the
-batch rollout significantly faster than originally planned — a workspace scan + one
-`--open-pr` per repo replaces the manual PR process. The `ADOPTION.md` should document
-this workflow. `OPERATIONS.md` should cover:
-- Bumping `catalog-pin.txt` (PR-based, with review checklist)
-- Rotating the OIDC IAM role
-- Debugging failed OIDC assumptions
-- What to do when a bumblebee scan or Semgrep rule produces false positives
+| Write `docs/ADOPTION.md` — team-facing import guide | ✅ written |
+| Write `docs/OPERATIONS.md` — runbook (catalog bumps, role rotation, troubleshooting) | ✅ written |
+| Announce to engineering leads; use `secinfra-onboard` for batch rollout | ⬜ 46 repos not yet onboarded |
+| Add compliance status badge to each adopted repo's README | ⬜ post-adoption per repo |
 
 ---
 
