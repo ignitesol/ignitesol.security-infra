@@ -16,6 +16,9 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8", "pytest-cov", "ruff"]
 
+[project.scripts]
+secinfra-onboard = "secinfra.onboard:main"
+
 [tool.setuptools.packages.find]
 where = ["scripts"]
 
