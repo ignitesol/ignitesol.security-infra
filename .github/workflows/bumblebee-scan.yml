@@ -18,6 +18,10 @@ on:
         description: "Bumblebee scan profile: baseline | project | deep"
         type: string
         default: "project"
+      scan_max_duration:
+        description: "Hard cap on the bumblebee scan walk (e.g. 5m, 10m)"
+        type: string
+        default: "10m"
     secrets:
       SECINFRA_SES_ROLE_ARN:
         required: false
@@ -33,6 +37,7 @@ jobs:
   scan:
     name: Scan
     runs-on: ubuntu-latest
+    timeout-minutes: 30   # hard backstop: bounds venv installs + scan walk
     permissions:
       contents: read
     steps:
@@ -121,6 +126,7 @@ jobs:
           fi
           bumblebee scan \
             --profile "${{ inputs.scan_profile }}" \
+            --max-duration "${{ inputs.scan_max_duration }}" \
             $ROOTS \
             --output results/bumblebee.ndjson \
             $CATALOGS
