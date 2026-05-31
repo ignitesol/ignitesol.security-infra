@@ -75,9 +75,9 @@ jobs:
           done
           bumblebee scan \
             --profile "${{ inputs.scan_profile }}" \
+            --root . \
             --output results/bumblebee.ndjson \
-            $CATALOGS \
-            .
+            $CATALOGS
         continue-on-error: true
 
       - name: Upload results artifact
