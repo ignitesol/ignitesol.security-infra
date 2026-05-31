@@ -77,18 +77,16 @@ jobs:
             (cd "$dir" && npx --no license-checker-rseidelsohn \
               --json --out "/tmp/lic-chunks/$i.json" --excludePackages "" 2>/dev/null || true)
           done < <(find . -name package.json -not -path '*/node_modules/*')
-          python3 -c "
-import json, glob
-merged = {}
-for f in sorted(glob.glob('/tmp/lic-chunks/*.json')):
-    try:
-        merged.update(json.load(open(f)))
-    except Exception as e:
-        print('skip', f, e)
-with open('results/npm-licenses-raw.json', 'w') as fh:
-    json.dump(merged, fh)
-print('Merged', len(merged), 'packages from', len(list(glob.glob('/tmp/lic-chunks/*.json'))), 'project(s)')
-"
+          python3 - <<'EOF'
+          import json, glob
+          chunks = sorted(glob.glob('/tmp/lic-chunks/*.json'))
+          merged = {}
+          for f in chunks:
+              try: merged.update(json.load(open(f)))
+              except Exception as e: print('skip', f, e)
+          json.dump(merged, open('results/npm-licenses-raw.json', 'w'))
+          print('Merged', len(merged), 'packages from', len(chunks), 'project(s)')
+          EOF
         continue-on-error: true
 
       # ── Python ───────────────────────────────────────────────────────────────
