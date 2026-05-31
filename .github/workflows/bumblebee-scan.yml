@@ -18,6 +18,10 @@ on:
         description: "Bumblebee scan profile: baseline | project | deep"
         type: string
         default: "project"
+      scan_max_duration:
+        description: "Hard cap on the bumblebee scan walk (e.g. 5m, 10m)"
+        type: string
+        default: "10m"
     secrets:
       SECINFRA_SES_ROLE_ARN:
         required: false
@@ -33,6 +37,7 @@ jobs:
   scan:
     name: Scan
     runs-on: ubuntu-latest
+    timeout-minutes: 30   # hard backstop: bounds venv installs + scan walk
     permissions:
       contents: read
     steps:
@@ -64,46 +69,39 @@ jobs:
           echo "Catalogs:"
           ls .bumblebee-src/threat_intel/*.json
 
-      - name: Set up Node
-        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0
-        with:
-          node-version: "20"
-
+      # npm needs no install: bumblebee reads the committed package-lock.json
+      # (and any node_modules metadata) directly during the --root . walk.
+      #
+      # PyPI is install-only: bumblebee's Python sources are install artifacts
+      # (*.dist-info/METADATA), never requirements.txt. We materialize each
+      # requirements file into its OWN venv so per-function pinned versions
+      # don't clobber each other in a shared environment, then scan each venv
+      # as an explicit --root. Venvs live in $RUNNER_TEMP (outside the
+      # checkout) so the --root . npm walk doesn't re-scan them.
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
         with:
           python-version: "3.12"
 
-      - name: Install npm dependencies (all package.json locations)
+      - name: Build per-function Python venvs (PyPI on-disk metadata)
         run: |
-          # Find every package.json that isn't inside a node_modules tree.
-          # npm ci is preferred; fall back to npm install if no lock file.
-          find . -name package.json \
-               -not -path '*/.secinfra/*' \
-               -not -path '*/node_modules/*' \
-               -not -path '*/.bumblebee-src/*' | while read pj; do
-            dir=$(dirname "$pj")
-            echo "--- npm install in $dir ---"
-            (cd "$dir" && (npm ci --ignore-scripts 2>/dev/null || npm install --ignore-scripts 2>/dev/null || true))
-          done
-        continue-on-error: true
-
-      - name: Install Python dependencies (all requirements files)
-        run: |
-          pip install --quiet pip 2>/dev/null || true
+          venv_base="$RUNNER_TEMP/secinfra-venvs"
+          roots_file="$RUNNER_TEMP/secinfra-venv-roots"
+          mkdir -p "$venv_base"
+          : > "$roots_file"
           find . -name "requirements*.txt" \
                -not -path '*/.secinfra/*' \
-               -not -path '*/.bumblebee-src/*' | while read req; do
-            echo "--- pip install -r $req ---"
-            pip install --quiet -r "$req" 2>/dev/null || true
+               -not -path '*/.bumblebee-src/*' \
+               -not -path '*/node_modules/*' | while read -r req; do
+            slug=$(printf '%s' "${req#./}" | tr '/.' '__')
+            venv="$venv_base/$slug"
+            echo "--- venv for $req -> $venv ---"
+            python -m venv "$venv" 2>/dev/null || continue
+            "$venv/bin/pip" install --quiet --upgrade pip 2>/dev/null || true
+            "$venv/bin/pip" install --quiet -r "$req" 2>/dev/null || true
+            echo "$venv" >> "$roots_file"
           done
-          find . \( -name "pyproject.toml" -o -name "setup.py" \) \
-               -not -path '*/.secinfra/*' \
-               -not -path '*/.bumblebee-src/*' | while read manifest; do
-            dir=$(dirname "$manifest")
-            echo "--- pip install $dir ---"
-            pip install --quiet "$dir" 2>/dev/null || true
-          done
+          echo "Built venvs:"; cat "$roots_file" 2>/dev/null || echo "(none)"
         continue-on-error: true
 
       - name: Create results directory
@@ -117,9 +115,19 @@ jobs:
           for f in .bumblebee-src/threat_intel/*.json; do
             CATALOGS="$CATALOGS --exposure-catalog $f"
           done
+          # --root . covers npm (committed lockfiles) + any on-disk metadata.
+          # Each per-function venv is added as its own root for PyPI coverage.
+          ROOTS="--root ."
+          roots_file="$RUNNER_TEMP/secinfra-venv-roots"
+          if [ -f "$roots_file" ]; then
+            while read -r v; do
+              [ -n "$v" ] && ROOTS="$ROOTS --root $v"
+            done < "$roots_file"
+          fi
           bumblebee scan \
             --profile "${{ inputs.scan_profile }}" \
-            --root . \
+            --max-duration "${{ inputs.scan_max_duration }}" \
+            $ROOTS \
             --output results/bumblebee.ndjson \
             $CATALOGS
         continue-on-error: true

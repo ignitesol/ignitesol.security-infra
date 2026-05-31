@@ -35,4 +35,5 @@ jobs:
     uses: ignitesol/ignitesol.security-infra/.github/workflows/bumblebee-scan.yml@v1
     secrets: inherit
     # with:
-    #   scan_profile: project    # default: project  (baseline|project|deep)
+    #   scan_profile: project      # default: project  (baseline|project|deep)
+    #   scan_max_duration: 10m     # cap the scan walk; raise for large dep trees
