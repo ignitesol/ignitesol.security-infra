@@ -68,24 +68,29 @@ jobs:
         if: contains(inputs.ecosystems, 'npm') && hashFiles('**/package.json') != ''
         run: |
           npm install --save-dev --ignore-scripts license-checker-rseidelsohn 2>/dev/null || true
+          # Use absolute path: npx loses the root node_modules/.bin when cd'd into a subdir
+          CHECKER="$GITHUB_WORKSPACE/node_modules/.bin/license-checker-rseidelsohn"
           mkdir -p /tmp/lic-chunks
           i=0
           while IFS= read -r pj; do
             i=$((i+1))
             dir=$(dirname "$pj")
-            echo "--- license-checker in $dir ---"
-            (cd "$dir" && npx --no license-checker-rseidelsohn \
-              --json --out "/tmp/lic-chunks/$i.json" --excludePackages "" 2>/dev/null || true)
+            echo "--- license-checker for $dir ---"
+            (cd "$dir" && "$CHECKER" --json --out "/tmp/lic-chunks/$i.json" 2>/dev/null) || true
           done < <(find . -name package.json -not -path '*/node_modules/*')
           python3 - <<'EOF'
           import json, glob
           chunks = sorted(glob.glob('/tmp/lic-chunks/*.json'))
           merged = {}
           for f in chunks:
-              try: merged.update(json.load(open(f)))
-              except Exception as e: print('skip', f, e)
+              try:
+                  data = json.load(open(f))
+                  merged.update(data)
+                  print(f'  {f}: {len(data)} packages')
+              except Exception as e:
+                  print(f'  skip {f}: {e}')
           json.dump(merged, open('results/npm-licenses-raw.json', 'w'))
-          print('Merged', len(merged), 'packages from', len(chunks), 'project(s)')
+          print('Total:', len(merged), 'packages from', len(chunks), 'project(s)')
           EOF
         continue-on-error: true
 
