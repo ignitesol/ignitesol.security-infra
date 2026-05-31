@@ -53,20 +53,42 @@ jobs:
         with:
           node-version: "20"
 
-      - name: npm — install
-        if: contains(inputs.ecosystems, 'npm') && hashFiles('package.json') != ''
-        run: npm ci --ignore-scripts
+      - name: npm — install (all package.json locations)
+        if: contains(inputs.ecosystems, 'npm') && hashFiles('**/package.json') != ''
+        run: |
+          find . -name package.json \
+               -not -path '*/node_modules/*' | while read pj; do
+            dir=$(dirname "$pj")
+            echo "--- npm install in $dir ---"
+            (cd "$dir" && (npm ci --ignore-scripts 2>/dev/null || npm install --ignore-scripts 2>/dev/null || true))
+          done
         continue-on-error: true
 
-      - name: npm — detect licenses
-        if: contains(inputs.ecosystems, 'npm') && hashFiles('package.json') != ''
+      - name: npm — detect licenses (all package.json locations)
+        if: contains(inputs.ecosystems, 'npm') && hashFiles('**/package.json') != ''
         run: |
+          # Install license-checker once at root (available globally via npx)
           npm install --save-dev --ignore-scripts license-checker-rseidelsohn 2>/dev/null || true
-          npx --no license-checker-rseidelsohn \
-            --json \
-            --out results/npm-licenses-raw.json \
-            --excludePackages "" \
-            || true
+          # Seed the merged output file
+          echo '{}' > results/npm-licenses-raw.json
+          find . -name package.json \
+               -not -path '*/node_modules/*' | while read pj; do
+            dir=$(dirname "$pj")
+            echo "--- license-checker in $dir ---"
+            tmp=$(mktemp /tmp/npm-lic-XXXXXX.json)
+            (cd "$dir" && npx --no license-checker-rseidelsohn \
+              --json --out "$tmp" --excludePackages "" 2>/dev/null || true)
+            if [ -s "$tmp" ]; then
+              node -e "
+                const fs = require('fs');
+                const merged = fs.existsSync('results/npm-licenses-raw.json')
+                  ? JSON.parse(fs.readFileSync('results/npm-licenses-raw.json', 'utf8') || '{}')
+                  : {};
+                const chunk = JSON.parse(fs.readFileSync('$tmp', 'utf8') || '{}');
+                fs.writeFileSync('results/npm-licenses-raw.json', JSON.stringify(Object.assign(merged, chunk)));
+              " 2>/dev/null || true
+            fi
+          done
         continue-on-error: true
 
       # ── Python ───────────────────────────────────────────────────────────────
@@ -76,18 +98,30 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Python — install
+      - name: Python — install (all manifest locations)
         if: contains(inputs.ecosystems, 'python')
         run: |
-          if [ -f pyproject.toml ] || [ -f setup.py ]; then
-            pip install --quiet . 2>/dev/null || true
-          fi
-          if [ -f requirements.txt ]; then
-            pip install --quiet -r requirements.txt 2>/dev/null || true
-          fi
-          if [ -f poetry.lock ]; then
-            pip install --quiet poetry && poetry install --no-root 2>/dev/null || true
-          fi
+          # Install from every requirements*.txt found in the repo
+          find . -name "requirements*.txt" \
+               -not -path '*/node_modules/*' | while read req; do
+            echo "--- pip install -r $req ---"
+            pip install --quiet -r "$req" 2>/dev/null || true
+          done
+          # Install any pyproject.toml / setup.py packages
+          find . \( -name "pyproject.toml" -o -name "setup.py" \) \
+               -not -path '*/node_modules/*' | while read manifest; do
+            dir=$(dirname "$manifest")
+            echo "--- pip install $dir ---"
+            pip install --quiet "$dir" 2>/dev/null || true
+          done
+          # poetry projects
+          find . -name "poetry.lock" \
+               -not -path '*/node_modules/*' | while read lock; do
+            dir=$(dirname "$lock")
+            echo "--- poetry install in $dir ---"
+            pip install --quiet poetry 2>/dev/null || true
+            (cd "$dir" && poetry install --no-root 2>/dev/null || true)
+          done
         continue-on-error: true
 
       - name: Python — detect licenses
