@@ -64,6 +64,48 @@ jobs:
           echo "Catalogs:"
           ls .bumblebee-src/threat_intel/*.json
 
+      - name: Set up Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0
+        with:
+          node-version: "20"
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: "3.12"
+
+      - name: Install npm dependencies (all package.json locations)
+        run: |
+          # Find every package.json that isn't inside a node_modules tree.
+          # npm ci is preferred; fall back to npm install if no lock file.
+          find . -name package.json \
+               -not -path '*/.secinfra/*' \
+               -not -path '*/node_modules/*' \
+               -not -path '*/.bumblebee-src/*' | while read pj; do
+            dir=$(dirname "$pj")
+            echo "--- npm install in $dir ---"
+            (cd "$dir" && (npm ci --ignore-scripts 2>/dev/null || npm install --ignore-scripts 2>/dev/null || true))
+          done
+        continue-on-error: true
+
+      - name: Install Python dependencies (all requirements files)
+        run: |
+          pip install --quiet pip 2>/dev/null || true
+          find . -name "requirements*.txt" \
+               -not -path '*/.secinfra/*' \
+               -not -path '*/.bumblebee-src/*' | while read req; do
+            echo "--- pip install -r $req ---"
+            pip install --quiet -r "$req" 2>/dev/null || true
+          done
+          find . \( -name "pyproject.toml" -o -name "setup.py" \) \
+               -not -path '*/.secinfra/*' \
+               -not -path '*/.bumblebee-src/*' | while read manifest; do
+            dir=$(dirname "$manifest")
+            echo "--- pip install $dir ---"
+            pip install --quiet "$dir" 2>/dev/null || true
+          done
+        continue-on-error: true
+
       - name: Create results directory
         run: |
           mkdir -p results
