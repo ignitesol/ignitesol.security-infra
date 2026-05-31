@@ -65,7 +65,9 @@ jobs:
           ls .bumblebee-src/threat_intel/*.json
 
       - name: Create results directory
-        run: mkdir -p results
+        run: |
+          mkdir -p results
+          touch results/bumblebee.ndjson
 
       - name: Run bumblebee
         run: |
