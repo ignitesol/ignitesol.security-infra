@@ -75,7 +75,7 @@ jobs:
                -not -path '*/node_modules/*' | while read pj; do
             dir=$(dirname "$pj")
             echo "--- license-checker in $dir ---"
-            tmp=$(mktemp /tmp/npm-lic-XXXXXX.json)
+            tmp=$(mktemp /tmp/npm-lic-XXXXXX)
             (cd "$dir" && npx --no license-checker-rseidelsohn \
               --json --out "$tmp" --excludePackages "" 2>/dev/null || true)
             if [ -s "$tmp" ]; then
