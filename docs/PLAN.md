@@ -1,6 +1,6 @@
 # IgniteSol Security & Compliance Infrastructure — Plan
 
-> **Status:** Phase 1 complete. Phase 2 (bumblebee pilots + v1 tag) is next.
+> **Status:** Phase 2 complete (pending pilot PR merges). Phase 3 (org-wide adoption) is next.
 > **Owner:** Chief Security & Compliance Engineering.
 > **Repo:** `ignitesol/ignitesol.security-infra` — central home for reusable GitHub
 > Actions workflows, orchestration scripts, email templates, and pinned threat-intel
@@ -209,19 +209,17 @@ present.
 Systems 1 (security scan) and 3 (license tracker) are live on both pilot repos.
 System 2 (bumblebee) is disabled in the pilot `compliance.yml` pending Phase 2.
 
-### Phase 2 — Bumblebee + v1 tag 🔜 next
+### Phase 2 — Bumblebee + v1 tag ✅ complete (pilot PRs pending merge)
 
 | Item | Status |
 |---|---|
-| Enable bumblebee job in pilot `compliance.yml` files | ⬜ |
-| Verify bumblebee email end-to-end on at least one pilot | ⬜ |
-| Review catalog-pin.txt — bump if stale | ⬜ |
-| Tag `v1` on this repo + create a moving `v1` major tag | ⬜ |
-| Update pilot workflows to reference `@v1` instead of `@main` | ⬜ |
+| Enable bumblebee job in pilot `compliance.yml` files | ✅ PRs open — ignite-email-service#87, fizzy-metrics#3 |
+| Verify bumblebee email end-to-end on at least one pilot | ✅ ignite-email-service dispatch run confirmed OIDC + SES send |
+| Review catalog-pin.txt — bump if stale | ✅ current with upstream bumblebee HEAD (`7c93206`) |
+| Tag `v1` on this repo + create a moving `v1` major tag | ✅ `v1.0.0` (immutable) + `v1` (moving) pushed |
+| Update pilot workflows to reference `@v1` instead of `@main` | ✅ included in the same pilot PRs |
 
-**Phase 2 is still valid and unchanged.** The bumblebee workflow is fully written and
-tested in isolation; the only remaining work is enabling it on the pilots and cutting
-the release tag.
+Merge ignite-email-service#87 and fizzy-metrics#3 to complete Phase 2.
 
 ### Phase 3 — Org-wide adoption 🔜 after v1
 
