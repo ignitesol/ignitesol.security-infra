@@ -67,28 +67,28 @@ jobs:
       - name: npm — detect licenses (all package.json locations)
         if: contains(inputs.ecosystems, 'npm') && hashFiles('**/package.json') != ''
         run: |
-          # Install license-checker once at root (available globally via npx)
           npm install --save-dev --ignore-scripts license-checker-rseidelsohn 2>/dev/null || true
-          # Seed the merged output file
-          echo '{}' > results/npm-licenses-raw.json
-          find . -name package.json \
-               -not -path '*/node_modules/*' | while read pj; do
+          mkdir -p /tmp/lic-chunks
+          i=0
+          while IFS= read -r pj; do
+            i=$((i+1))
             dir=$(dirname "$pj")
             echo "--- license-checker in $dir ---"
-            tmp=$(mktemp /tmp/npm-lic-XXXXXX)
             (cd "$dir" && npx --no license-checker-rseidelsohn \
-              --json --out "$tmp" --excludePackages "" 2>/dev/null || true)
-            if [ -s "$tmp" ]; then
-              node -e "
-                const fs = require('fs');
-                const merged = fs.existsSync('results/npm-licenses-raw.json')
-                  ? JSON.parse(fs.readFileSync('results/npm-licenses-raw.json', 'utf8') || '{}')
-                  : {};
-                const chunk = JSON.parse(fs.readFileSync('$tmp', 'utf8') || '{}');
-                fs.writeFileSync('results/npm-licenses-raw.json', JSON.stringify(Object.assign(merged, chunk)));
-              " 2>/dev/null || true
-            fi
-          done
+              --json --out "/tmp/lic-chunks/$i.json" --excludePackages "" 2>/dev/null || true)
+          done < <(find . -name package.json -not -path '*/node_modules/*')
+          python3 -c "
+import json, glob
+merged = {}
+for f in sorted(glob.glob('/tmp/lic-chunks/*.json')):
+    try:
+        merged.update(json.load(open(f)))
+    except Exception as e:
+        print('skip', f, e)
+with open('results/npm-licenses-raw.json', 'w') as fh:
+    json.dump(merged, fh)
+print('Merged', len(merged), 'packages from', len(list(glob.glob('/tmp/lic-chunks/*.json'))), 'project(s)')
+"
         continue-on-error: true
 
       # ── Python ───────────────────────────────────────────────────────────────
