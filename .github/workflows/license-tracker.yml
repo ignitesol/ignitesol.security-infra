@@ -3,7 +3,9 @@
 # Per-ecosystem: installs deps then runs license detection (npm, Python, Java).
 # Two-job pattern:
 #   scan  — credential-less; installs + detects; emits results artifact
-#   notify — contents:write + SES OIDC; diffs manifest, emails, commits manifest back
+#   notify — contents:write + SES OIDC; diffs manifest, emails, then persists the
+#            refreshed manifest to a dedicated state branch (secinfra/manifests)
+#            via git plumbing — no default-branch push, survives PR protection.
 #
 # Adopt in your repo:
 #   jobs:
@@ -229,12 +231,7 @@ jobs:
           role-to-assume: ${{ secrets.SECINFRA_SES_ROLE_ARN }}
           aws-region: ${{ secrets.SECINFRA_SES_REGION || 'us-east-1' }}
 
-      - name: Configure git for manifest commit
-        run: |
-          git -C .caller-repo config user.name  "secinfra-bot"
-          git -C .caller-repo config user.email "secinfra-bot@ignitesol.com"
-
-      - name: Send email report + commit manifest
+      - name: Send email report + persist manifest to state branch
         env:
           GITHUB_WORKSPACE: ${{ github.workspace }}/.caller-repo
           SECINFRA_SES_FROM: ${{ secrets.SECINFRA_SES_FROM }}

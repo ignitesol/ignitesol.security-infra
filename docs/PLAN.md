@@ -30,12 +30,12 @@ All three **email a summary** at the end.
 | System 1 scope | Secrets (**Gitleaks**) + SAST (**Semgrep**) + SCA (**Trivy fs**) + IaC/container (**Trivy config**) |
 | System 1 gating | **Report-only**, email always (rollout phase). Fail-on-High threshold wired but off by default |
 | System 2 catalog | Bumblebee's own `threat_intel/*.json` catalogs, pulled at runtime, **pinned to a verified commit** (`config/catalog-pin.txt`), bumped via PR |
-| System 3 state | **Commit a snapshot manifest** (`.security/dependency-manifest.json`) into the repo; diff against the prior committed version |
+| System 3 state | **Persist a snapshot manifest** to a dedicated state branch (`secinfra/manifests`, keyed `manifests/<branch>.json`) via git plumbing; diff against the prior version. No default-branch push — survives PR protection |
 | System 3 policy | **Report all** new deps + detected license/SPDX ID, grouped by ecosystem. No allow/deny verdicts |
 | System 3 ecosystems | **npm, Python (pip/poetry), Java (Maven/Gradle)** only |
 | System 3 license tools | **Per-ecosystem tools** (not SBOM): `license-checker-rseidelsohn`, `pip-licenses`, Maven/Gradle license plugin |
 | System 3 resolve mode | **Install dependencies, then detect** (most accurate) |
-| Credential isolation | **Two-job pattern** per system: install/scan runs credential-less; a separate minimal job sends mail (and, for System 3, commits the manifest) |
+| Credential isolation | **Two-job pattern** per system: install/scan runs credential-less; a separate minimal job sends mail (and, for System 3, persists the manifest to the state branch) |
 | Glue language | **Python** (boto3 for SES, JSON/SARIF parsing, Jinja2 HTML email) |
 
 ## 3. Universal architecture: two-job pattern
@@ -51,8 +51,8 @@ mail or write credentials** — central to the supply-chain mandate.
 2. **`notify` job** (`needs: scan`)
    - Runs **no project/tool code**. Downloads the artifact, renders the email
      (Python + Jinja2), assumes the OIDC → SES role, sends.
-   - For **System 3 only**, also holds `contents: write` to commit the refreshed
-     manifest back to the repo.
+   - For **System 3 only**, also holds `contents: write` to push the refreshed
+     manifest to the dedicated state branch (`secinfra/manifests`) via git plumbing.
    - The **only** job that touches credentials.
 
 ## 4. Repository layout (this repo)
@@ -69,7 +69,7 @@ scripts/secinfra/          # installable Python package
     sarif.py               # normalize SARIF/JSON from each tool
     mailer.py              # OIDC-assumed SES send (dry-run flag)
     render.py              # Jinja2 HTML+text rendering
-    github.py              # run links, repo metadata, manifest commit helpers
+    github.py              # run links, repo metadata, state-branch manifest helpers
   security_report.py       # aggregate Gitleaks + Semgrep + Trivy -> summary model
   bumblebee_report.py      # run bumblebee + catalogs -> summary model
   license_report.py        # per-ecosystem detect + diff vs prior manifest
@@ -103,7 +103,7 @@ on:
   push: { branches: [main] }
   workflow_dispatch:
 permissions:
-  contents: write        # System 3 commits its manifest
+  contents: write        # System 3 pushes its manifest to the state branch
   id-token: write        # OIDC -> SES in the notify jobs
 jobs:
   security:
@@ -175,11 +175,16 @@ Ecosystems: **npm, Python, Java**. Mode: **install then detect**.
   - Install commands overridable in `.security/config.yml`.
   - Produces the current dependency + license manifest -> artifact.
 - **notify job (`contents: write` + SES, no project code):**
-  - Diff manifest vs the prior committed `.security/dependency-manifest.json`.
-  - Email **dependencies added since last run**, each with detected license + SPDX ID,
-    grouped by ecosystem. **Report all, no policy verdicts.**
-  - Commit the refreshed manifest back (`[skip ci]`, bot identity). Git history is the
-    audit trail.
+  - Read the prior manifest from the **dedicated state branch** (`secinfra/manifests`,
+    override via `SECINFRA_STATE_BRANCH`), keyed by source branch:
+    `manifests/<source-branch>.json`. Absent branch/file ⇒ first run (empty baseline).
+  - Diff current vs prior; email **dependencies added since last run**, each with
+    detected license + SPDX ID, grouped by ecosystem. **Report all, no policy verdicts.**
+  - Persist the refreshed manifest back to the state branch via **pure git plumbing**
+    (`hash-object` → `update-index` on a temp index → `write-tree` → `commit-tree` →
+    `push … :refs/heads/secinfra/manifests`). The working tree and default branch are
+    never touched, so this survives PR-required branch protection. Git history on the
+    state branch is the audit trail.
 
 ## 9. Email design
 

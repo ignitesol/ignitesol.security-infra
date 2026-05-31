@@ -3,11 +3,14 @@
 Reads artifacts written by the scan job:
   results/licenses-current.json   — {ecosystem: [{name, version, license, spdx_id}]}
 
-Diffs against the committed manifest at:
-  .security/dependency-manifest.json
+Diffs against the per-repo manifest persisted on the dedicated state branch
+(secinfra/manifests by default, override via SECINFRA_STATE_BRANCH), keyed by
+the source branch name:
+  manifests/<source-branch>.json
 
 Renders an email listing new dependencies + their licenses,
-then commits the refreshed manifest.
+then persists the refreshed manifest back to the state branch via git plumbing
+(no working-tree or default-branch writes — survives PR-required protection).
 
 Usage:
     python -m secinfra.license_report --results-dir results/ --workspace .
@@ -22,9 +25,22 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .common.config import RepoConfig
-from .common.github import commit_manifest, repo_name, run_url, sha_short
+from .common.github import (
+    read_state_manifest,
+    repo_name,
+    run_url,
+    sha_short,
+    write_state_manifest,
+)
 from .common.mailer import send
 from .common.render import render_html, render_text
+
+
+def _manifest_file() -> str:
+    """State-branch path for this repo's manifest, keyed by source branch."""
+    ref = os.environ.get("GITHUB_REF_NAME", "") or "default"
+    safe = ref.replace("/", "-")
+    return f"manifests/{safe}.json"
 
 
 @dataclass
@@ -82,8 +98,8 @@ def main(argv: list[str] | None = None) -> int:
     cc = [security_cc] if security_cc else []
 
     current = _load_json(results_dir / "licenses-current.json")
-    manifest_path = ws / ".security" / "dependency-manifest.json"
-    previous = _load_json(manifest_path)
+    manifest_file = _manifest_file()
+    previous = read_state_manifest(manifest_file, workspace=str(ws))
 
     added = _diff(current, previous)
 
@@ -116,8 +132,13 @@ def main(argv: list[str] | None = None) -> int:
         cc=cc,
     )
 
-    # Commit refreshed manifest (only if contents:write job succeeds sending)
-    commit_manifest(manifest_path, current, workspace=str(ws))
+    # Persist refreshed manifest to the dedicated state branch (after send).
+    write_state_manifest(
+        manifest_file,
+        current,
+        workspace=str(ws),
+        message=f"chore(secinfra): update {manifest_file} for {repo_name()} @ {sha_short()}",
+    )
     return 0
 
 
