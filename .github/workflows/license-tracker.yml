@@ -12,6 +12,9 @@
 #     licenses:
 #       uses: ignitesol/ignitesol.security-infra/.github/workflows/license-tracker.yml@v1
 #       secrets: inherit
+#
+# Optional inputs: ecosystems, secinfra_ref (pin the internal scripts/config
+# checkout to match your `uses:` ref exactly).
 
 name: License Tracker
 
@@ -22,6 +25,13 @@ on:
         description: "Comma-separated list of ecosystems to scan: npm,python,java"
         type: string
         default: "npm,python,java"
+      secinfra_ref:
+        description: >-
+          Ref to check out for this repo's own scripts/config. Defaults to
+          the tag this workflow file ships in; override if you pin `uses:`
+          to something else and want scripts to match exactly.
+        type: string
+        default: "v1.1.1"
     secrets:
       SECINFRA_SES_ROLE_ARN:
         required: false
@@ -238,7 +248,7 @@ jobs:
         with:
           repository: ignitesol/ignitesol.security-infra
           path: .secinfra
-          ref: feat/merge-gate-workflows  # TEMP: testing this branch pre-v1; revert once merged/tagged
+          ref: ${{ inputs.secinfra_ref }}
 
       - name: Checkout caller repo
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
@@ -301,7 +311,7 @@ jobs:
         with:
           repository: ignitesol/ignitesol.security-infra
           path: .secinfra
-          ref: feat/merge-gate-workflows  # TEMP: testing this branch pre-v1; revert once merged/tagged
+          ref: ${{ inputs.secinfra_ref }}
 
       - name: Checkout caller repo (for .security/config.yml)
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
