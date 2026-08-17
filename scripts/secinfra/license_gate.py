@@ -61,7 +61,9 @@ def _matches_deny(token: str, deny_entry: str) -> bool:
     return re.match(rf"^{re.escape(deny_l)}([-+].*)?$", token_l) is not None
 
 
-def _find_violations(current: dict, deny: list[str], deny_unknown: bool) -> list[Violation]:
+def _find_violations(
+    current: dict, deny: list[str], deny_unknown: bool
+) -> list[Violation]:
     violations: list[Violation] = []
     for ecosystem, deps in current.items():
         for dep in deps:
@@ -70,7 +72,8 @@ def _find_violations(current: dict, deny: list[str], deny_unknown: bool) -> list
             license_str = dep.get("license", "") or ""
             tokens = _license_tokens(license_str)
 
-            if deny_unknown and (not tokens or all(t.lower() in _UNKNOWN_LICENSES for t in tokens)):
+            all_unknown = all(t.lower() in _UNKNOWN_LICENSES for t in tokens)
+            if deny_unknown and (not tokens or all_unknown):
                 violations.append(Violation(
                     ecosystem, name, version, license_str or "Unknown",
                     "license is unknown/missing",
@@ -89,7 +92,9 @@ def _find_violations(current: dict, deny: list[str], deny_unknown: bool) -> list
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="System 3 gate: fail the build on license policy violations")
+    parser = argparse.ArgumentParser(
+        description="System 3 gate: fail the build on license policy violations"
+    )
     parser.add_argument("--results-dir", default="results")
     parser.add_argument("--workspace", default=None)
     args = parser.parse_args(argv)
@@ -108,7 +113,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if not policy.deny and not policy.deny_unknown:
-        print("license.policy not configured (empty deny list, deny_unknown: false) — gate passes.")
+        print(
+            "license.policy not configured (empty deny list, deny_unknown: false) "
+            "— gate passes."
+        )
         return 0
 
     violations = _find_violations(current, policy.deny, policy.deny_unknown)

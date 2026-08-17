@@ -27,13 +27,20 @@ import sys
 from pathlib import Path
 
 from .common.config import RepoConfig
-from .common.sarif import Severity, count_by_severity, load_all_findings, meets_threshold
+from .common.sarif import (
+    Severity,
+    count_by_severity,
+    load_all_findings,
+    meets_threshold,
+)
 
 _VALID_TIERS = {"critical", "high", "medium", "low"}
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="System 1 gate: fail the build on policy violations")
+    parser = argparse.ArgumentParser(
+        description="System 1 gate: fail the build on policy violations"
+    )
     parser.add_argument("--results-dir", default="results")
     parser.add_argument("--workspace", default=None)
     args = parser.parse_args(argv)
@@ -53,7 +60,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if gate.fail_on == "none":
-        print("systems.security.fail_on: none (default) — gating not opted in; gate passes.")
+        print(
+            "systems.security.fail_on: none (default) — gating not opted in; "
+            "gate passes."
+        )
         return 0
 
     if gate.fail_on not in _VALID_TIERS:
