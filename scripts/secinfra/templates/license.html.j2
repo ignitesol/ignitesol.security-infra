@@ -25,7 +25,6 @@
       <th>Package</th>
       <th>Version</th>
       <th>License</th>
-      <th>SPDX ID</th>
     </tr>
   </thead>
   <tbody>
@@ -34,7 +33,6 @@
       <td><strong>{{ dep.name }}</strong></td>
       <td><code>{{ dep.version }}</code></td>
       <td>{{ dep.license }}</td>
-      <td><code>{{ dep.spdx_id or "—" }}</code></td>
     </tr>
     {% endfor %}
   </tbody>

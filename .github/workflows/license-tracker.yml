@@ -180,7 +180,6 @@ jobs:
                   name: pkgver.substring(0, at),
                   version: pkgver.substring(at + 1),
                   license: Array.isArray(info.licenses) ? info.licenses.join(', ') : (info.licenses || 'Unknown'),
-                  spdx_id: Array.isArray(info.licenses) ? info.licenses[0] : (info.licenses || ''),
                 };
               });
             }
@@ -193,7 +192,6 @@ jobs:
                 name: pkg.Name,
                 version: pkg.Version,
                 license: pkg.License || 'Unknown',
-                spdx_id: pkg.License || '',
               }));
             }
 
@@ -207,7 +205,6 @@ jobs:
                   name: `${dep.groupId}:${dep.artifactId}`,
                   version: dep.version || '',
                   license: (dep.licenses || []).map(l => l.name).join(', ') || 'Unknown',
-                  spdx_id: (dep.licenses || [])[0]?.url || '',
                 }));
               } catch (e) {
                 console.log('Java license parse error (non-fatal):', e.message);

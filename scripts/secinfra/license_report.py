@@ -1,7 +1,7 @@
 """System 3 — notify job entry point.
 
 Reads artifacts written by the scan job:
-  results/licenses-current.json   — {ecosystem: [{name, version, license, spdx_id}]}
+  results/licenses-current.json   — {ecosystem: [{name, version, license}]}
 
 Diffs against the per-repo manifest persisted on the dedicated state branch
 (secinfra/manifests by default, override via SECINFRA_STATE_BRANCH), keyed by
@@ -48,7 +48,6 @@ class Dependency:
     name: str
     version: str
     license: str
-    spdx_id: str
     ecosystem: str
 
 
@@ -78,7 +77,6 @@ def _diff(current: dict, previous: dict) -> list[Dependency]:
                     name=dep.get("name", ""),
                     version=dep.get("version", ""),
                     license=dep.get("license", "Unknown"),
-                    spdx_id=dep.get("spdx_id", ""),
                     ecosystem=ecosystem,
                 ))
     added.sort(key=lambda d: (d.ecosystem, d.name))
