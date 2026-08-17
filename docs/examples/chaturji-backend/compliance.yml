@@ -1,0 +1,49 @@
+# Compliance — security scan + license tracker + bumblebee supply-chain scan
+# Adapted for ignitesol.chaturji.backend (Python; flagship RAG/LLM backend,
+# touches payment-reporting code). Tier: STRICT — see ../README.md.
+#
+# NOTE: this repo currently ships compliance-daily.yml (security + license,
+# push-triggered) and compliance-weekly.yml (bumblebee, cron-only, Mondays).
+# A cron-only job never attaches to a pull request's check run, so it can
+# never be made a required status check — "supply chain always blocks
+# merge" needs bumblebee running on pull_request too. This example folds
+# all three systems into one workflow for that reason. If the deep weekly
+# sweep (scan_profile: deep) is still wanted, keep compliance-weekly.yml
+# alongside this file rather than in place of it.
+
+name: Compliance
+
+on:
+  push:
+    branches: [develop, qa, main]
+  pull_request:
+    branches: [develop, qa, main]
+  schedule:
+    - cron: '0 6 * * *'      # nightly at 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write        # license-tracker writes dependency manifest to state branch
+  id-token: write        # OIDC → SES in notify jobs
+  security-events: write # security-scan uploads SARIF to GitHub Code Scanning
+
+jobs:
+  security:
+    uses: ignitesol/ignitesol.security-infra/.github/workflows/security-scan.yml@v1
+    secrets: inherit
+
+  licenses:
+    uses: ignitesol/ignitesol.security-infra/.github/workflows/license-tracker.yml@v1
+    secrets: inherit
+    with:
+      ecosystems: python
+
+  bumblebee:
+    uses: ignitesol/ignitesol.security-infra/.github/workflows/bumblebee-scan.yml@v1
+    secrets: inherit
+
+# Required status checks to add in branch protection for develop/qa/main
+# (GitHub names reusable-workflow checks "<job id above> / <called job>"):
+#   security / Gate
+#   licenses / Gate
+#   bumblebee / Gate

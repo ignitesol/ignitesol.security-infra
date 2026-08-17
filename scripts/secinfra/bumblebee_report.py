@@ -11,63 +11,15 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 
+from .common.bumblebee import parse_ndjson
 from .common.config import RepoConfig
 from .common.github import repo_name, run_url, sha_short
 from .common.mailer import send
 from .common.render import render_html, render_text
-
-
-@dataclass
-class Match:
-    package: str
-    version: str
-    ecosystem: str
-    campaign: str
-    catalog_file: str
-    detail: str = ""
-
-
-def _parse_ndjson(path: Path) -> tuple[int, list[Match]]:
-    """Return (component_count, matches).
-
-    Bumblebee (perplexityai/bumblebee) NDJSON schema: every line carries a
-    `record_type` discriminator. Package observations use record_type
-    "package"; exposure-catalog matches use "finding". Each record's package
-    identity is `package_name`/`version`/`ecosystem`, and a finding names the
-    matched catalog via `catalog_name`/`catalog_id`. scan_summary and
-    diagnostic records are ignored here.
-    """
-    component_count = 0
-    matches: list[Match] = []
-    for line in path.read_text().splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            record = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        rec_type = record.get("record_type", "")
-        if rec_type == "package":
-            component_count += 1
-        elif rec_type == "finding":
-            catalog = record.get("catalog_name") or record.get("catalog_id", "")
-            detail = record.get("evidence") or record.get("severity", "")
-            matches.append(Match(
-                package=record.get("package_name", ""),
-                version=record.get("version", ""),
-                ecosystem=record.get("ecosystem", ""),
-                campaign=catalog,
-                catalog_file=record.get("source_file", ""),
-                detail=detail,
-            ))
-    return component_count, matches
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -86,7 +38,7 @@ def main(argv: list[str] | None = None) -> int:
         print("No bumblebee results found; skipping email.", file=sys.stderr)
         return 0
 
-    component_count, matches = _parse_ndjson(ndjson_path)
+    component_count, matches = parse_ndjson(ndjson_path)
 
     ctx = {
         "repo": repo_name(),

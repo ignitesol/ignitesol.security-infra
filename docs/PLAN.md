@@ -32,12 +32,14 @@ All three **email a summary** at the end via AWS SES.
 | Cadence | Fully team-owned — caller sets cron/push/dispatch | ✅ implemented |
 | Email transport | AWS SES via GitHub OIDC → IAM role (no static keys) | ✅ implemented |
 | Recipients | Per-repo `.security/config.yml`; central CC always added | ✅ implemented |
-| Credential isolation | Two-job pattern: scan (no creds) → notify (OIDC + optional write) | ✅ implemented |
+| Credential isolation | scan (no creds) → notify (OIDC + optional write) + gate (no creds), the latter two both depending only on scan | ✅ implemented |
 | Glue language | Python — boto3 (SES), Jinja2 (HTML email), PyYAML, packaging | ✅ implemented |
 | System 1 tools | Gitleaks 8.30.1 · Semgrep · Trivy 0.70.0 fs + config | ✅ implemented |
-| System 1 gating | Report-only; fail-on-High wired but off by default | ✅ implemented |
+| System 1 gating | `gate` job; opt-in via `systems.security.fail_on` (none default); gitleaks always fails once set | ✅ implemented |
 | System 2 catalog | Bumblebee `threat_intel/*.json` pinned via `config/catalog-pin.txt` | ✅ implemented |
+| System 2 gating | `gate` job; opt-in via `systems.bumblebee.fail_on: any` (no severity tiers upstream) | ✅ implemented |
 | System 3 ecosystems | npm · Python (pip/poetry) · Java (Maven/Gradle) | ✅ implemented |
+| System 3 gating | `gate` job; opt-in via `license.policy.deny`/`deny_unknown`, checked against full current manifest | ✅ implemented |
 | System 3 license tools | `license-checker-rseidelsohn` · `pip-licenses` · Maven license plugin | ✅ implemented |
 | System 3 resolve mode | Install deps, then detect (most accurate) | ✅ implemented |
 | System 3 state | Dedicated orphan state branch (`secinfra/manifests`) via git plumbing | ✅ implemented |
@@ -238,10 +240,12 @@ These are wired for but off by default:
 
 | Feature | Trigger to enable |
 |---|---|
-| Fail-on-High/Critical gating (System 1) | Set `systems.security.fail_on: high` in `.security/config.yml` |
 | Auto-open GitHub tracking issues on new findings | Phase 3 opt-in; needs `issues: write` in caller |
-| License risk tiers (allow / review / deny lists) | Phase 3 opt-in; config key `license.policy` |
 | Central rollup dashboard | Post-Phase 3; aggregates the always-CC'd security inbox |
+
+Merge-gating for all three systems (severity threshold, exposure-match, and
+license policy) shipped as a `gate` job per workflow — see §2 above and
+"Opting into stricter gating" in `docs/ADOPTION.md`.
 
 ---
 

@@ -1,0 +1,33 @@
+# .security/config.yml — ignite-slack-service
+#
+# Tier: LENIENT. Small internal Slack integration, first time onboarding
+# onto the compliance workflows — report-only on security/license so the
+# team can see what a normal scan looks like before opting into anything
+# stricter, but supply-chain is never optional: bumblebee still blocks.
+
+email:
+  to:
+    - team-slack-service@ignitesol.com   # TODO: replace with the owning team's address
+
+systems:
+  security:
+    enabled: true
+    fail_on: none    # report-only. NOTE: this also disables the "secrets
+                      # always block" carve-out (it only applies once
+                      # fail_on is set to a real tier) — a leaked credential
+                      # here will email but NOT fail the build. Move to at
+                      # least fail_on: critical once the team has looked at
+                      # a few scan runs and is ready to enforce it.
+  bumblebee:
+    enabled: true
+    fail_on: any      # supply-chain: always blocking, no tiers, every repo —
+                       # the one thing this tier does not relax
+  license:
+    enabled: true       # report-only: no policy configured below
+
+license:
+  ecosystems:
+    - npm
+
+paths:
+  scan_root: "."
