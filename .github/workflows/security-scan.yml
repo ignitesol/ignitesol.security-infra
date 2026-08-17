@@ -57,6 +57,7 @@ jobs:
         with:
           repository: ignitesol/ignitesol.security-infra
           path: .secinfra
+          ref: ${{ github.workflow_sha }}
           sparse-checkout: config
 
       - name: Install tools
@@ -150,6 +151,7 @@ jobs:
         with:
           repository: ignitesol/ignitesol.security-infra
           path: .secinfra
+          ref: ${{ github.workflow_sha }}
 
       - name: Checkout caller repo (for .security/config.yml)
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
@@ -211,6 +213,7 @@ jobs:
         with:
           repository: ignitesol/ignitesol.security-infra
           path: .secinfra
+          ref: ${{ github.workflow_sha }}
 
       - name: Checkout caller repo (for .security/config.yml)
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
