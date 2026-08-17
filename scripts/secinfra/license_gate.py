@@ -1,7 +1,7 @@
 """System 3 — merge-gate entry point.
 
 Reads the artifact written by the scan job:
-  results/licenses-current.json   — {ecosystem: [{name, version, license, spdx_id}]}
+  results/licenses-current.json   — {ecosystem: [{name, version, license}]}
 
 Evaluates the repo's configured license policy (license.policy in
 .security/config.yml) against every dependency CURRENTLY present — not just

@@ -1,6 +1,6 @@
 """Shared loading for license-tracker's normalized output.
 
-results/licenses-current.json shape: {ecosystem: [{name, version, license, spdx_id}]}
+results/licenses-current.json shape: {ecosystem: [{name, version, license}]}
 """
 from __future__ import annotations
 
