@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -62,7 +62,9 @@ def load_sarif(path: Path, tool: str) -> list[Finding]:
         for result in run.get("results", []):
             rule_id = result.get("ruleId", "")
             rule = rules.get(rule_id, {})
-            level = result.get("level") or rule.get("defaultConfiguration", {}).get("level")
+            level = result.get("level") or rule.get(
+                "defaultConfiguration", {}
+            ).get("level")
             severity = Severity.from_string(level)
             message = result.get("message", {}).get("text", "")
             loc = result.get("locations", [{}])[0]
@@ -112,7 +114,10 @@ def load_trivy_json(path: Path) -> list[Finding]:
             findings.append(Finding(
                 tool="trivy-sca",
                 rule_id=vuln.get("VulnerabilityID", ""),
-                title=f"{vuln.get('PkgName', '')} {vuln.get('InstalledVersion', '')} — {vuln.get('VulnerabilityID', '')}",
+                title=(
+                    f"{vuln.get('PkgName', '')} {vuln.get('InstalledVersion', '')}"
+                    f" — {vuln.get('VulnerabilityID', '')}"
+                ),
                 severity=Severity.from_string(vuln.get("Severity")),
                 file=target,
                 message=vuln.get("Title", vuln.get("Description", ""))[:200],

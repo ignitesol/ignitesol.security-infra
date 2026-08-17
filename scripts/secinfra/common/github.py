@@ -81,7 +81,10 @@ def read_state_manifest(
     try:
         return json.loads(show.stdout.decode())
     except json.JSONDecodeError:
-        print(f"Warning: manifest '{manifest_file}' on '{br}' is not valid JSON.", flush=True)
+        print(
+            f"Warning: manifest '{manifest_file}' on '{br}' is not valid JSON.",
+            flush=True,
+        )
         return {}
 
 

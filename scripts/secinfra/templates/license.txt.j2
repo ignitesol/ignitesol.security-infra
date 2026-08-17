@@ -12,7 +12,6 @@ No new dependencies added since the last run.
 {% for dep in deps %}
   {{ dep.name }} {{ dep.version }}
     License : {{ dep.license }}
-    SPDX    : {{ dep.spdx_id or "unknown" }}
 {% endfor %}
 {% endfor %}
 {% endif %}

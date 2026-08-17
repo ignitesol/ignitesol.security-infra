@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import email.mime.multipart
 import email.mime.text
-import json
 import os
 import sys
 
@@ -25,7 +24,9 @@ def send(
 ) -> None:
     from_addr = sender or os.environ.get("SECINFRA_SES_FROM", "security@ignitesol.com")
     aws_region = region or os.environ.get("SECINFRA_SES_REGION", "us-east-1")
-    dry_run = os.environ.get("SECINFRA_DRY_RUN", "0").strip() not in ("0", "", "false", "False")
+    dry_run = os.environ.get("SECINFRA_DRY_RUN", "0").strip() not in (
+        "0", "", "false", "False",
+    )
 
     all_recipients = list(dict.fromkeys(to + cc))
 

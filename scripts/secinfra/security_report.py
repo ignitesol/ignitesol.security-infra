@@ -55,7 +55,9 @@ def _load_findings(results_dir: Path) -> list[Finding]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="System 1 notify: security scan report")
+    parser = argparse.ArgumentParser(
+        description="System 1 notify: security scan report"
+    )
     parser.add_argument("--results-dir", default="results")
     parser.add_argument("--workspace", default=None)
     args = parser.parse_args(argv)
