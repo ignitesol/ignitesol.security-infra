@@ -174,12 +174,35 @@ license:
   policy:
     deny: [GPL-3.0, AGPL-3.0, SSPL-1.0]   # SPDX ids/prefixes; empty by default
     deny_unknown: true                     # fail on missing/"Unknown" license
+    overrides:
+      python/brevo-python: MIT             # "ecosystem/name": SPDX id
 ```
 
 Unlike the report email (which only lists *newly added* dependencies), the gate
 checks every dependency currently in the repo — so turning this on surfaces
 existing violations immediately, not just future ones. There is no default
 deny-list; license restrictions are a policy call each team makes explicitly.
+
+**`overrides`** corrects a dependency's license when the automated scan can't
+detect it from package metadata. For Python, license detection uses
+`pip-licenses`, which only reads a package's `License:` metadata field or
+`License ::` trove classifier — it does not open and read a bundled `LICENSE`
+file. A package that declares its license only via a `License-File` pointer
+(common under newer PEP 639-style packaging) shows up as `Unknown` even
+though the license is right there in the file, which trips `deny_unknown`
+on an otherwise-fine dependency. `overrides` lets you assert the real value
+instead of turning `deny_unknown` off entirely:
+
+- Keyed `"ecosystem/name"`, case-insensitive, matched against every version
+  of that dependency (not version-pinned).
+- The override value is substituted for the detected license and then
+  evaluated against `deny` like any other value — it corrects what the gate
+  sees, it doesn't grant a bypass. Overriding a package to a denied license
+  id will still fail the gate.
+- Applies equally to the report email's newly-added-dependency listing, so a
+  dependency you've overridden doesn't keep showing up as `Unknown` there.
+- Verify the real license yourself before adding an entry — this is a
+  manual, auditable assertion, not automated detection.
 
 ### Making it actually block merges
 

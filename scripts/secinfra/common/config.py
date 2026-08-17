@@ -22,6 +22,11 @@ class EmailConfig:
 class LicensePolicy:
     deny: list[str] = field(default_factory=list)
     deny_unknown: bool = False
+    # User-declared corrections for dependencies whose license can't be
+    # machine-detected from package metadata (e.g. a package that ships a
+    # LICENSE file but never sets the SPDX classifier/field pip-licenses reads).
+    # Keyed "ecosystem/name" (case-insensitive), e.g. {"python/brevo-python": "MIT"}.
+    overrides: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -105,6 +110,10 @@ class RepoConfig:
                 policy=LicensePolicy(
                     deny=list(policy_data.get("deny", [])),
                     deny_unknown=bool(policy_data.get("deny_unknown", False)),
+                    overrides={
+                        str(k).strip().lower(): str(v).strip()
+                        for k, v in (policy_data.get("overrides", {}) or {}).items()
+                    },
                 ),
             ),
             paths=paths_data,

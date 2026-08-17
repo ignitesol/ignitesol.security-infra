@@ -16,6 +16,12 @@ repo explicitly configures a policy. Add this job's check
 ("license / Gate") as a required status check to actually block merges —
 see docs/ADOPTION.md.
 
+license.policy.overrides lets a repo correct a dependency's detected
+license when the scanner can't read it from package metadata (e.g. a
+package that ships a LICENSE file but never sets the classifier/field
+pip-licenses reads, so it shows up as "Unknown" under deny_unknown even
+though the license is known) — see docs/ADOPTION.md.
+
 Usage:
     python -m secinfra.license_gate --results-dir results/ --workspace .
 """
@@ -28,7 +34,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .common.config import RepoConfig
-from .common.license import load_current
+from .common.license import apply_overrides, load_current
 
 _UNKNOWN_LICENSES = {"", "unknown", "none", "noassertion"}
 
@@ -105,8 +111,11 @@ def main(argv: list[str] | None = None) -> int:
     policy = config.license.policy
 
     current = load_current(results_dir)
+    current, applied_overrides = apply_overrides(current, policy.overrides)
     total = sum(len(v) for v in current.values())
     print(f"Dependencies scanned: {total}")
+    for o in applied_overrides:
+        print(f"  override: {o.ecosystem}/{o.name} [{o.detected}] -> [{o.override}]")
 
     if not gate.enabled:
         print("systems.license disabled; gate skipped.")

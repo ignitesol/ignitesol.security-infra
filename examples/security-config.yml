@@ -39,6 +39,11 @@ license:
   # policy:
   #   deny: [GPL-3.0, AGPL-3.0, SSPL-1.0]   # SPDX ids/prefixes
   #   deny_unknown: true                     # fail on missing/"Unknown" license
+  #   overrides:                             # correct a scan that can't
+  #     python/brevo-python: MIT             # detect a real license from
+  #                                           # package metadata — see
+  #                                           # "Opting into stricter gating"
+  #                                           # in docs/ADOPTION.md
 
 paths:
   scan_root: "."

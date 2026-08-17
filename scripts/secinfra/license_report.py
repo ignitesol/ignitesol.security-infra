@@ -31,7 +31,7 @@ from .common.github import (
     sha_short,
     write_state_manifest,
 )
-from .common.license import load_current
+from .common.license import apply_overrides, load_current
 from .common.mailer import send
 from .common.render import render_html, render_text
 
@@ -90,6 +90,11 @@ def main(argv: list[str] | None = None) -> int:
     cc = [security_cc] if security_cc else []
 
     current = load_current(results_dir)
+    current, applied_overrides = apply_overrides(
+        current, config.license.policy.overrides
+    )
+    for o in applied_overrides:
+        print(f"  override: {o.ecosystem}/{o.name} [{o.detected}] -> [{o.override}]")
     manifest_file = _manifest_file()
     previous = read_state_manifest(manifest_file, workspace=str(ws))
 
