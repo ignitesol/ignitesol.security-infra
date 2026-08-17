@@ -135,7 +135,10 @@ def main(argv: list[str] | None = None) -> int:
         manifest_file,
         current,
         workspace=str(ws),
-        message=f"chore(secinfra): update {manifest_file} for {repo_name()} @ {sha_short()}",
+        message=(
+            f"chore(secinfra): update {manifest_file} for "
+            f"{repo_name()} @ {sha_short()}"
+        ),
     )
     return 0
 
