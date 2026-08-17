@@ -12,6 +12,9 @@
 # Optional inputs:
 #   scan_root    — directory to scan (default: .)
 #   semgrep_rules — override the central Semgrep ruleset ref
+#   secinfra_ref  — pin the internal checkout of this repo's scripts/config
+#                   to match your `uses:` ref exactly (default: this
+#                   release's own tag — see below)
 
 name: Security Scan
 
@@ -26,6 +29,14 @@ on:
         description: Override Semgrep rules (leave blank to use org default)
         type: string
         default: ""
+      secinfra_ref:
+        description: >-
+          Ref to check out for this repo's own scripts/config (scripts/,
+          config/). Defaults to the tag this workflow file ships in;
+          override if you pin `uses:` to something else and want scripts to
+          match exactly.
+        type: string
+        default: "v1.1.1"
     secrets:
       SECINFRA_SES_ROLE_ARN:
         required: false
@@ -57,7 +68,7 @@ jobs:
         with:
           repository: ignitesol/ignitesol.security-infra
           path: .secinfra
-          ref: feat/merge-gate-workflows  # TEMP: testing this branch pre-v1; revert once merged/tagged
+          ref: ${{ inputs.secinfra_ref }}
           sparse-checkout: config
 
       - name: Install tools
@@ -151,7 +162,7 @@ jobs:
         with:
           repository: ignitesol/ignitesol.security-infra
           path: .secinfra
-          ref: feat/merge-gate-workflows  # TEMP: testing this branch pre-v1; revert once merged/tagged
+          ref: ${{ inputs.secinfra_ref }}
 
       - name: Checkout caller repo (for .security/config.yml)
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
@@ -213,7 +224,7 @@ jobs:
         with:
           repository: ignitesol/ignitesol.security-infra
           path: .secinfra
-          ref: feat/merge-gate-workflows  # TEMP: testing this branch pre-v1; revert once merged/tagged
+          ref: ${{ inputs.secinfra_ref }}
 
       - name: Checkout caller repo (for .security/config.yml)
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
