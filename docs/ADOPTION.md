@@ -79,6 +79,10 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '0 6 * * *'    # nightly at 06:00 UTC
+  # Add this if you want to gate merges (see "Opting into stricter gating"
+  # below) — push-to-main alone runs after the merge, too late to block it.
+  # pull_request:
+  #   branches: [main]
 
 permissions:
   contents: write        # license-tracker writes dependency manifest
@@ -133,14 +137,64 @@ Teams can also split into two workflow files (`compliance-daily.yml` /
 
 ## Opting into stricter gating
 
-By default all systems are report-only. To fail the workflow on high-severity
-findings, add to `.security/config.yml`:
+By default all systems are report-only — nothing blocks a merge until you opt in.
+Each workflow now runs a third job, **Gate**, alongside `Notify` (both depend only
+on `Scan`, so email delivery and gating never block each other). Gate reads the
+same policy from `.security/config.yml` and exits non-zero when it's tripped;
+report-only repos see it pass unconditionally.
+
+### Security scan
 
 ```yaml
 systems:
   security:
-    fail_on: high    # options: critical | high | medium
+    fail_on: high    # none (default) | critical | high | medium | low
 ```
+
+Findings at or above the configured tier fail the gate. **Gitleaks (secret)
+findings always fail the gate once `fail_on` is set to any tier** — a checked-in
+credential isn't something a noise-reduction threshold should be able to wave
+through.
+
+### Bumblebee
+
+```yaml
+systems:
+  bumblebee:
+    fail_on: any    # none (default) | any
+```
+
+Bumblebee's exposure records carry no documented severity taxonomy upstream, so
+gating is boolean: any match against a threat-intel catalog fails the build.
+
+### License tracker
+
+```yaml
+license:
+  policy:
+    deny: [GPL-3.0, AGPL-3.0, SSPL-1.0]   # SPDX ids/prefixes; empty by default
+    deny_unknown: true                     # fail on missing/"Unknown" license
+```
+
+Unlike the report email (which only lists *newly added* dependencies), the gate
+checks every dependency currently in the repo — so turning this on surfaces
+existing violations immediately, not just future ones. There is no default
+deny-list; license restrictions are a policy call each team makes explicitly.
+
+### Making it actually block merges
+
+Opting into `fail_on`/`policy` only makes the job fail — it doesn't block
+anything by itself. Two more steps, both in the **consuming repo**:
+
+1. Trigger the caller workflow on `pull_request` (the example in
+   [Manual path](#manual-path) above only runs on `push` to `main`, i.e. after
+   merge — add a `pull_request` trigger so it runs beforehand).
+2. Add the relevant check(s) to branch protection / repo rulesets as **required
+   status checks**. GitHub names a reusable-workflow check `<caller job id> /
+   <called job name>` — with the job ids in `examples/caller-compliance.yml`
+   (`security`, `bumblebee`, `licenses`) that's `security / Gate`,
+   `bumblebee / Gate`, `licenses / Gate` (adjust if you renamed the jobs in
+   your own `compliance.yml`).
 
 ---
 

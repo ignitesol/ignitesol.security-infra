@@ -19,16 +19,47 @@ class EmailConfig:
 
 
 @dataclass
+class LicensePolicy:
+    deny: list[str] = field(default_factory=list)
+    deny_unknown: bool = False
+
+
+@dataclass
 class LicenseConfig:
     ecosystems: list[str] = field(default_factory=lambda: ["npm", "python", "java"])
     install: dict[str, str] = field(default_factory=dict)
+    policy: LicensePolicy = field(default_factory=LicensePolicy)
+
+
+@dataclass
+class SystemGate:
+    """Per-system enable flag + optional merge-gate threshold.
+
+    Accepts either a plain bool (`security: true`) or a dict
+    (`security: {enabled: true, fail_on: high}`) from YAML.
+    """
+
+    enabled: bool = True
+    fail_on: str = "none"
+
+    @classmethod
+    def from_value(cls, value: object) -> "SystemGate":
+        if isinstance(value, dict):
+            return cls(
+                enabled=bool(value.get("enabled", True)),
+                fail_on=str(value.get("fail_on") or "none").lower(),
+            )
+        return cls(enabled=bool(value) if value is not None else True)
+
+    def __bool__(self) -> bool:
+        return self.enabled
 
 
 @dataclass
 class SystemsConfig:
-    security: bool = True
-    bumblebee: bool = True
-    license: bool = True
+    security: SystemGate = field(default_factory=SystemGate)
+    bumblebee: SystemGate = field(default_factory=SystemGate)
+    license: SystemGate = field(default_factory=SystemGate)
 
 
 @dataclass
@@ -59,16 +90,22 @@ class RepoConfig:
         license_data = data.get("license", {})
         paths_data = data.get("paths", {"scan_root": "."})
 
+        policy_data = license_data.get("policy", {})
+
         return cls(
             email=EmailConfig(to=to_list),
             systems=SystemsConfig(
-                security=systems_data.get("security", True),
-                bumblebee=systems_data.get("bumblebee", True),
-                license=systems_data.get("license", True),
+                security=SystemGate.from_value(systems_data.get("security", True)),
+                bumblebee=SystemGate.from_value(systems_data.get("bumblebee", True)),
+                license=SystemGate.from_value(systems_data.get("license", True)),
             ),
             license=LicenseConfig(
                 ecosystems=license_data.get("ecosystems", ["npm", "python", "java"]),
                 install=license_data.get("install", {}),
+                policy=LicensePolicy(
+                    deny=list(policy_data.get("deny", [])),
+                    deny_unknown=bool(policy_data.get("deny_unknown", False)),
+                ),
             ),
             paths=paths_data,
         )

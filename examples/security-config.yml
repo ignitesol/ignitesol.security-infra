@@ -10,6 +10,17 @@ systems:
   bumblebee: true
   license: true
 
+  # Each system above also accepts a dict form to opt into merge-gating
+  # (report-only until you set fail_on — see docs/ADOPTION.md):
+  # security:
+  #   enabled: true
+  #   fail_on: high    # none (default) | critical | high | medium | low
+  #                    # Gitleaks (secret) findings always fail once any tier
+  #                    # is set, regardless of how lenient the tier is.
+  # bumblebee:
+  #   enabled: true
+  #   fail_on: any     # none (default) | any — no severity tiers upstream
+
 license:
   # Subset of ecosystems present in your repo
   ecosystems:
@@ -22,6 +33,12 @@ license:
   #   npm: "npm ci --ignore-scripts"
   #   python: "pip install -r requirements.txt"
   #   java: "mvn -q dependency:resolve"
+
+  # Optional: merge-gate on license policy (empty/off by default). Checks
+  # every dependency currently present, not just newly-added ones.
+  # policy:
+  #   deny: [GPL-3.0, AGPL-3.0, SSPL-1.0]   # SPDX ids/prefixes
+  #   deny_unknown: true                     # fail on missing/"Unknown" license
 
 paths:
   scan_root: "."

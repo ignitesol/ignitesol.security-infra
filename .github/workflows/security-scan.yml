@@ -189,3 +189,50 @@ jobs:
           python -m secinfra.security_report \
             --results-dir results \
             --workspace .caller-repo
+
+  # ── Job 3: gate — evaluate severity threshold, fail the build if opted in ──
+  #
+  # Runs independently of `notify` (both depend only on `scan`) so email
+  # delivery and merge-gating never block each other. Gating is opt-in via
+  # systems.security.fail_on in the caller repo's .security/config.yml — see
+  # docs/ADOPTION.md. To actually block merges, add this job's check as a
+  # required status check in the caller repo's branch protection / ruleset —
+  # GitHub names it "<caller job id> / Gate" (e.g. "security / Gate" for the
+  # job id used in examples/caller-compliance.yml).
+  gate:
+    name: Gate
+    needs: scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout security-infra (scripts)
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+        with:
+          repository: ignitesol/ignitesol.security-infra
+          path: .secinfra
+
+      - name: Checkout caller repo (for .security/config.yml)
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+        with:
+          path: .caller-repo
+
+      - name: Download results artifact
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0  # v5.0.0
+        with:
+          name: security-results-${{ github.run_id }}
+          path: results
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: "3.12"
+
+      - name: Install secinfra
+        run: pip install --quiet .secinfra/
+
+      - name: Evaluate merge gate
+        run: |
+          python -m secinfra.security_gate \
+            --results-dir results \
+            --workspace .caller-repo

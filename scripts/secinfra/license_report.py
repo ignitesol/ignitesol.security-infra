@@ -18,7 +18,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import sys
 from dataclasses import dataclass
@@ -32,6 +31,7 @@ from .common.github import (
     sha_short,
     write_state_manifest,
 )
+from .common.license import load_current
 from .common.mailer import send
 from .common.render import render_html, render_text
 
@@ -49,12 +49,6 @@ class Dependency:
     version: str
     license: str
     ecosystem: str
-
-
-def _load_json(path: Path) -> dict:
-    if path.exists():
-        return json.loads(path.read_text())
-    return {}
 
 
 def _flatten(manifest: dict) -> set[tuple[str, str, str]]:
@@ -95,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
     security_cc = os.environ.get("SECINFRA_SECURITY_CC", "")
     cc = [security_cc] if security_cc else []
 
-    current = _load_json(results_dir / "licenses-current.json")
+    current = load_current(results_dir)
     manifest_file = _manifest_file()
     previous = read_state_manifest(manifest_file, workspace=str(ws))
 
