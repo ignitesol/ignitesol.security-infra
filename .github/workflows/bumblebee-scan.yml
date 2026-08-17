@@ -112,10 +112,13 @@ jobs:
 
       - name: Run bumblebee
         run: |
-          CATALOGS=""
-          for f in .bumblebee-src/threat_intel/*.json; do
-            CATALOGS="$CATALOGS --exposure-catalog $f"
-          done
+          # --exposure-catalog is a single-value flag in bumblebee's own CLI
+          # (cmd/bumblebee/main.go), not repeatable — passing it once per
+          # catalog file silently overwrote all but the alphabetically last
+          # one. Point it at the threat_intel/ directory instead so
+          # bumblebee's own directory-mode loader (internal/exposure.Load)
+          # merges every *.json catalog inside.
+          CATALOGS="--exposure-catalog .bumblebee-src/threat_intel"
           # --root . covers npm (committed lockfiles) + any on-disk metadata.
           # Each per-function venv is added as its own root for PyPI coverage.
           ROOTS="--root ."
