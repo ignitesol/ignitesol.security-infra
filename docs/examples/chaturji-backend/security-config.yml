@@ -1,0 +1,38 @@
+# .security/config.yml — ignitesol.chaturji.backend
+#
+# Tier: STRICT. This is the flagship RAG/LLM product backend and touches
+# payment-reporting code (report-payments/) — the highest blast radius of
+# the three example repos, so it gets the tightest gate on all three
+# systems.
+
+email:
+  to:
+    - murtaza.lightwala@ignitesol.com  # TODO: replace/confirm with the current owning team
+
+systems:
+  security:
+    enabled: true
+    fail_on: high     # blocks HIGH + CRITICAL SAST/SCA/IaC findings.
+                       # Gitleaks (secret) findings always block once this is
+                       # set to any tier, regardless of severity — see
+                       # docs/ADOPTION.md.
+  bumblebee:
+    enabled: true
+    fail_on: any       # supply-chain: always blocking, no tiers, every repo
+  license:
+    enabled: true
+
+license:
+  ecosystems:
+    - python
+
+  policy:
+    deny:
+      - GPL-3.0        # strong copyleft — incompatible with a closed-source product
+      - AGPL-3.0
+      - SSPL-1.0
+    deny_unknown: true  # a dependency with no detectable license is a legal
+                         # unknown on a product with a payments surface — block it
+
+paths:
+  scan_root: "."

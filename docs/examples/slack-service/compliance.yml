@@ -1,0 +1,45 @@
+# Compliance — security scan + license tracker + bumblebee supply-chain scan
+# New for ignite-slack-service (npm; small internal Slack integration).
+# Tier: LENIENT — see ../README.md. This repo has no .github/workflows or
+# .security/config.yml yet, so this is a first-time onboarding, not an edit
+# to an existing file.
+
+name: Compliance
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  # schedule:
+  #   - cron: '0 6 * * *'    # nightly at 06:00 UTC
+
+permissions:
+  contents: write        # license-tracker commits dependency manifest
+  id-token: write        # OIDC → SES in notify jobs
+  security-events: write # upload SARIF to GitHub Code Scanning
+
+jobs:
+  security:
+    uses: ignitesol/ignitesol.security-infra/.github/workflows/security-scan.yml@v1
+    secrets: inherit
+
+  licenses:
+    uses: ignitesol/ignitesol.security-infra/.github/workflows/license-tracker.yml@v1
+    secrets: inherit
+    with:
+      ecosystems: npm
+
+  bumblebee:
+    uses: ignitesol/ignitesol.security-infra/.github/workflows/bumblebee-scan.yml@v1
+    secrets: inherit
+
+# Required status check to add in branch protection for main — this tier
+# only makes bumblebee mandatory (see security-config.yml):
+#   bumblebee / Gate
+#
+# security / Gate and licenses / Gate will run and email as normal but
+# pass unconditionally under this tier's config, so requiring them in
+# branch protection wouldn't currently block anything — add them later if
+# this repo tightens its policy.

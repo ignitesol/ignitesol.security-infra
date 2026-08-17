@@ -8,6 +8,12 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  # Uncomment to run on PRs too — required if you want the Gate job of any
+  # of these workflows to actually block merges (branch protection can only
+  # require a check that ran on the PR; push-to-main runs after the merge).
+  # See "Opting into stricter gating" in docs/ADOPTION.md.
+  # pull_request:
+  #   branches: [main]
   # Uncomment and adjust to add a scheduled run:
   # schedule:
   #   - cron: '0 6 * * *'    # nightly at 06:00 UTC

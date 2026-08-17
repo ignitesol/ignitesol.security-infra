@@ -22,36 +22,7 @@ from .common.config import RepoConfig
 from .common.github import repo_name, run_url, sha_short
 from .common.mailer import send
 from .common.render import render_html, render_text
-from .common.sarif import (
-    Finding,
-    count_by_severity,
-    load_gitleaks_json,
-    load_sarif,
-    load_trivy_json,
-    sort_findings,
-)
-
-
-def _load_findings(results_dir: Path) -> list[Finding]:
-    findings: list[Finding] = []
-
-    gitleaks = results_dir / "gitleaks.json"
-    if gitleaks.exists() and gitleaks.stat().st_size > 2:
-        findings.extend(load_gitleaks_json(gitleaks))
-
-    semgrep = results_dir / "semgrep.sarif"
-    if semgrep.exists():
-        findings.extend(load_sarif(semgrep, "semgrep"))
-
-    trivy_sca = results_dir / "trivy-sca.json"
-    if trivy_sca.exists():
-        findings.extend(load_trivy_json(trivy_sca))
-
-    trivy_iac = results_dir / "trivy-iac.json"
-    if trivy_iac.exists():
-        findings.extend(load_trivy_json(trivy_iac))
-
-    return sort_findings(findings)
+from .common.sarif import count_by_severity, load_all_findings
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -67,7 +38,7 @@ def main(argv: list[str] | None = None) -> int:
     security_cc = os.environ.get("SECINFRA_SECURITY_CC", "")
     cc = [security_cc] if security_cc else []
 
-    findings = _load_findings(results_dir)
+    findings = load_all_findings(results_dir)
     counts = count_by_severity(findings)
     top_findings = findings[:20]
 

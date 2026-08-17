@@ -151,8 +151,36 @@ def sort_findings(findings: list[Finding]) -> list[Finding]:
     return sorted(findings, key=lambda f: _SEVERITY_ORDER.index(f.severity))
 
 
+def meets_threshold(severity: Severity, threshold: Severity) -> bool:
+    """True if `severity` is at least as severe as `threshold`."""
+    return _SEVERITY_ORDER.index(severity) <= _SEVERITY_ORDER.index(threshold)
+
+
 def count_by_severity(findings: list[Finding]) -> dict[str, int]:
     counts: dict[str, int] = {s.value: 0 for s in Severity}
     for f in findings:
         counts[f.severity.value] += 1
     return {k: v for k, v in counts.items() if v > 0}
+
+
+def load_all_findings(results_dir: Path) -> list[Finding]:
+    """Load + normalize every System 1 result file present in results_dir."""
+    findings: list[Finding] = []
+
+    gitleaks = results_dir / "gitleaks.json"
+    if gitleaks.exists() and gitleaks.stat().st_size > 2:
+        findings.extend(load_gitleaks_json(gitleaks))
+
+    semgrep = results_dir / "semgrep.sarif"
+    if semgrep.exists():
+        findings.extend(load_sarif(semgrep, "semgrep"))
+
+    trivy_sca = results_dir / "trivy-sca.json"
+    if trivy_sca.exists():
+        findings.extend(load_trivy_json(trivy_sca))
+
+    trivy_iac = results_dir / "trivy-iac.json"
+    if trivy_iac.exists():
+        findings.extend(load_trivy_json(trivy_iac))
+
+    return sort_findings(findings)
