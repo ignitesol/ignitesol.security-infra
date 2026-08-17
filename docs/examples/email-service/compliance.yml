@@ -1,0 +1,45 @@
+# Compliance — security scan + license tracker + bumblebee supply-chain scan
+# Adapted for ignite-email-service (npm; internal notification/email
+# microservice). Tier: MODERATE — see ../README.md.
+#
+# NOTE: this repo's current compliance.yml has systems.bumblebee: false in
+# .security/config.yml ("enabled in Phase 2"). This example turns it on —
+# per "supply chain always blocks merge", bumblebee gating is not optional
+# in any tier, so Phase 2 needs to land before this example is adopted.
+
+name: Compliance
+
+on:
+  push:
+    branches: [dev]
+  pull_request:
+    branches: [dev]
+  workflow_dispatch:
+  # schedule:
+  #   - cron: '0 6 * * *'    # nightly at 06:00 UTC
+
+permissions:
+  contents: write        # license-tracker commits dependency manifest
+  id-token: write        # OIDC → SES in notify jobs
+  security-events: write # upload SARIF to GitHub Code Scanning
+
+jobs:
+  security:
+    uses: ignitesol/ignitesol.security-infra/.github/workflows/security-scan.yml@v1
+    secrets: inherit
+
+  licenses:
+    uses: ignitesol/ignitesol.security-infra/.github/workflows/license-tracker.yml@v1
+    secrets: inherit
+    with:
+      ecosystems: npm
+
+  bumblebee:
+    uses: ignitesol/ignitesol.security-infra/.github/workflows/bumblebee-scan.yml@v1
+    secrets: inherit
+
+# Required status checks to add in branch protection for dev
+# (GitHub names reusable-workflow checks "<job id above> / <called job>"):
+#   security / Gate
+#   licenses / Gate
+#   bumblebee / Gate

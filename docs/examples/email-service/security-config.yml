@@ -1,0 +1,40 @@
+# .security/config.yml — ignite-email-service
+#
+# Tier: MODERATE. An internal microservice, not payments/customer-data
+# critical the way chaturji-backend is — gate on real risk (critical
+# findings, strong-copyleft licenses) without blocking merges on every
+# medium/low-severity SAST hit a small team can't triage quickly.
+
+email:
+  to:
+    - harshniket.seta@ignitesol.com
+
+systems:
+  security:
+    enabled: true
+    fail_on: critical  # only CRITICAL SAST/SCA/IaC findings block.
+                        # Gitleaks (secret) findings still always block once
+                        # this is set to any tier — see docs/ADOPTION.md.
+  bumblebee:
+    enabled: true        # was `false` ("Phase 2") — supply-chain gating is
+    fail_on: any          # not optional in any tier; Phase 2 lands with this file
+  license:
+    enabled: true
+
+license:
+  ecosystems:
+    - npm
+  install:
+    npm: "npm ci --ignore-scripts"
+
+  policy:
+    deny:
+      - AGPL-3.0        # network-copyleft is the one bright line here
+      - SSPL-1.0
+    deny_unknown: false  # npm's license metadata is noisy enough (lots of
+                          # "Unknown" from third-tier transitive deps) that
+                          # blocking on it would mostly generate false-positive
+                          # gate failures rather than catching real risk
+
+paths:
+  scan_root: "."
