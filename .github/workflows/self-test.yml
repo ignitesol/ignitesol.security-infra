@@ -1,6 +1,6 @@
 # Self-test CI for the security-infra repo itself.
-# Lints Python, runs unit tests (when added), and does a dry-run
-# of each report script against fixture data.
+# Lints Python, runs the test suite (incl. real-scanner integration tests),
+# and does a dry-run of each report script against fixture data.
 
 name: Self-Test
 
@@ -19,7 +19,30 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install --quiet ruff
-      - run: ruff check scripts/
+      - run: ruff check scripts/ tests/
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: "3.12"
+      # Real scanners so tests/test_scanner_integration.py runs instead of
+      # skipping. Gitleaks is pinned to the version security-scan.yml ships;
+      # semgrep is unpinned there too, so we track what consumers get.
+      - name: Install scanners
+        run: |
+          GITLEAKS_VERSION="8.30.1"
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin gitleaks
+          pip install --quiet semgrep
+      - run: pip install --quiet ".[dev]"
+      - run: pytest --cov=secinfra --cov-report=term-missing
+        env:
+          # Turn "scanner missing / registry unreachable" skips into failures.
+          REQUIRE_SCANNERS: "1"
 
   dry-run:
     name: Dry-run all report scripts

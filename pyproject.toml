@@ -27,3 +27,10 @@ secinfra = ["templates/*.j2"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
+
+[tool.pytest.ini_options]
+pythonpath = ["scripts"]
+testpaths = ["tests"]
+markers = [
+    "scanner: runs the real gitleaks/semgrep binaries (skipped when they are not installed)",
+]

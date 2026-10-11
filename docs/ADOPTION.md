@@ -156,6 +156,10 @@ findings always fail the gate once `fail_on` is set to any tier** — a checked-
 credential isn't something a noise-reduction threshold should be able to wave
 through.
 
+The gate also **fails closed** if the scan job recorded Gitleaks or Semgrep as not
+having run correctly (config failed to load, zero rules loaded, non-zero exit): a
+scanner that never ran is not a pass. See `docs/OPERATIONS.md` §8.
+
 ### Bumblebee
 
 ```yaml

@@ -1,12 +1,20 @@
 {% extends "base.txt.j2" %}
 {% block title %}Security Scan — {{ repo }}{% endblock %}
 {% block content %}
+{% if scanner_failures %}
+!! SCAN INCOMPLETE — NOT A CLEAN RESULT !!
+These scanners did not run correctly; their findings are missing from this report:
+{% for s in scanner_failures %}
+  - {{ s.scanner }}: {{ s.reason }}
+{% endfor %}
+
+{% endif %}
 Total findings: {{ total }}
 {% for sev, count in counts.items() %}  {{ sev | upper }}: {{ count }}
 {% endfor %}
 
 {% if not has_findings %}
-No findings — clean scan.
+{% if scanner_failures %}No findings reported by the scanners that ran.{% else %}No findings — clean scan.{% endif %}
 {% else %}
 Top findings (up to 20):
 {% for f in findings %}

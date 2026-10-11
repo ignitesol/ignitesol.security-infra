@@ -99,20 +99,30 @@ Suppress a specific finding inline with a Semgrep comment on the affected line:
 result = eval(user_input)  # nosemgrep: dangerous-eval
 ```
 
-Or add a path-level ignore in `config/defaults/.semgrepignore` (affects all adopters)
-or in the caller repo's own `.semgrepignore` file.
+Or add a `.semgrepignore` file to the **caller repo's root** (Semgrep reads it from
+the directory it scans). There is no central ignore file.
 
 ### Gitleaks (secrets scan)
 
-Add an allowlist entry to the caller repo's `.gitleaks.toml`:
+The workflow always runs with the central `config/defaults/gitleaks.toml`
+(`--config` is explicit), so **a `.gitleaks.toml` in the caller repo is not read**.
+What does work:
 
-```toml
-[[allowlist.regexes]]
-description = "Test fixture — not a real secret"
-regex = '''EXAMPLE_FAKE_KEY_[A-Z0-9]+'''
-```
+- **Inline:** add `# gitleaks:allow` to the affected line.
+- **A known finding already in history:** add its fingerprint to a
+  `.gitleaksignore` file in the caller repo root. The fingerprint
+  (`<commit>:<file>:<rule>:<line>`) is in the run's `gitleaks.json` artifact.
+- **A pattern that is a false positive everywhere:** open a PR against
+  `config/defaults/gitleaks.toml`. Use `[[allowlists]]` (plural) for the array form;
+  singular `[[allowlist]]` fails to load in gitleaks 8.30.x:
 
-Or suppress inline with a `# gitleaks:allow` comment on the affected line.
+  ```toml
+  [[allowlists]]
+  description = "Test fixture — not a real secret"
+  regexes = ['''EXAMPLE_FAKE_KEY_[A-Z0-9]+''']
+  ```
+
+If a secret is real, rotating it is the fix; suppressing it only silences the alert.
 
 ### Bumblebee (supply-chain scan)
 
@@ -142,6 +152,8 @@ package name collides with a catalog entry but is a legitimate dependency:
 | Email not received, "Send email report" step failed | SES sandbox / unverified recipient | Verify recipient in SES or exit sandbox |
 | bumblebee job fails with "exit code 2" | Scan found no output file | Ensure `results/bumblebee.ndjson` is pre-created (already fixed in v1) |
 | license-tracker scan fails with "No package files found" | Ecosystem auto-detection missed a file | Set `ecosystems:` explicitly in the caller `with:` block |
+| Scan job red, annotation "gitleaks/semgrep did not run correctly" | Scanner exited non-zero, wrote no/invalid output, or semgrep loaded 0 rules | Read the annotation and the step log; see §8. Notify and Gate still run and report the scan as incomplete |
+| Gate fails with "scanner(s) did not run correctly" | Same as above; Gate fails closed once `fail_on` is set | Fix the scanner; do not lower `fail_on` to get green |
 | SARIF upload fails | `security-events: write` missing from caller `permissions:` | Add to the caller workflow's top-level permissions |
 | Manifest not written to state branch | `contents: write` missing, or branch protection covers all branches | Confirm `contents: write` in caller; the state branch `secinfra/manifests` should not be covered by branch-protection rules |
 
@@ -169,3 +181,89 @@ ecosystem:
    `.github/workflows/license-tracker.yml`.
 3. Update `examples/security-config.yml` and `docs/ADOPTION.md`.
 4. Open a PR; once merged, bump `v1`.
+
+---
+
+## 8. Rollout: Gitleaks and Semgrep now actually run (behaviour change)
+
+Until this change, two of the four scanners in `security-scan.yml` did nothing, and
+`continue-on-error` hid it:
+
+- **Gitleaks** — `config/defaults/gitleaks.toml` used `[[allowlist]]`, which gitleaks
+  8.30.x rejects (`'AllowList' expected a map, got 'slice'`). It exited 1 and wrote
+  no `gitleaks.json`, so secrets were never scanned and the gate's "secrets always
+  fail" rule could never fire.
+- **Semgrep** — `--config "p/default p/owasp-top-ten p/secrets"` was passed as one
+  argument. Semgrep loaded 0 rules, exited 7 (swallowed by `|| true`) and wrote an
+  empty SARIF in about 3 s.
+
+Fixed by renaming the table to `[[allowlists]]` and passing one `--config` per
+ruleset. Both scanners are now health-checked by `scripts/secinfra/scan_guard.py`, so
+a scanner that fails to load its config or rules can no longer report a false
+"clean".
+
+### What consumers will see once `v1` moves
+
+1. **Findings in the Notify email.** Gitleaks scans the full git history
+   (`fetch-depth: 0`), so expect *historic* secrets, not just new ones. Semgrep
+   findings use SARIF severity (`error` → high, `warning` → medium). Volume per repo
+   is unknown until it runs; the email lists only the top 20.
+2. **Secret values are redacted.** Gitleaks runs with `--redact` and
+   `load_gitleaks_json` never copies `Match`/`Secret` into a finding, so the leaked
+   text does not reach the artifact, run log or email. Emails show file, line, rule
+   and a short commit SHA.
+3. **Gate failures.** For any consumer that has set `systems.security.fail_on`, a
+   single gitleaks finding now fails the gate (that rule existed but could never
+   trigger), and Semgrep findings at or above the tier fail it too. Consumers with
+   `fail_on: none` (the default) are unaffected.
+4. **Gate fails closed on a broken scanner.** If gitleaks or semgrep did not run
+   correctly, Gate fails (when `fail_on` is set) instead of passing on empty
+   results. A transient failure such as the Semgrep registry being unreachable will
+   therefore fail gated repos until re-run.
+5. **Scan job goes red on a broken scanner.** Previously always green. Notify and
+   Gate use `if: ${{ !cancelled() }}`, so they still run; the email carries an
+   "incomplete scan" banner and the subject ends `SCANNER FAILED: <names>`. If Scan
+   dies before the artifact upload (checkout or tool install fails), Notify and Gate
+   now run and fail at the artifact download, where before they were skipped; a
+   skipped required check counts as passing, so this fails closed.
+6. **Scan job duration and billed minutes.** Semgrep previously cost about 3 s
+   because it scanned with no rules. With rules loaded it downloads the rulesets and
+   scans every tracked file: about 2 s on a one-file fixture (323 rules), growing
+   with repo size and potentially minutes on large monorepos. Gitleaks adds a full-history scan. GitHub bills **per job, per whole
+   minute**, so Scan going from under one minute to a few is a real cost increase on
+   every scheduled run. There is no input to disable a scanner; the levers are
+   `scan_root` (narrow the tree) and `semgrep_rules` (fewer rulesets,
+   whitespace-separated, no spaces inside a ruleset name or path).
+
+7. **Semgrep SARIF still contains matched source lines.** Semgrep writes
+   `region.snippet.text` into `semgrep.sarif`, so a `p/secrets` hit places the
+   matching line in the 7-day results artifact and, via the SARIF upload, in GitHub
+   Code Scanning. Emails and logs are not affected (only the finding message is
+   used). Gitleaks `--redact` does not cover this path. Strip snippets before upload
+   if that exposure matters.
+
+### Before the `v1` tag moves
+
+1. **Measure.** In a test-bed repo and in the largest consumer, run the Compliance
+   workflow against this branch and compare the Scan job's duration with a recent run
+   on `@v1`:
+
+   ```yaml
+   uses: ignitesol/ignitesol.security-infra/.github/workflows/security-scan.yml@<branch>
+   with:
+     secinfra_ref: <branch>
+   ```
+
+2. **Tell consumers first.** Announce that secret and SAST findings, possible Gate
+   failures and longer Scan runs are coming, and point them to §4 for suppressing
+   false positives. Real secrets found in history must be rotated.
+3. **Release mechanics.** The Scan job checks out `scripts/secinfra/scan_guard.py` and
+   the fixed `gitleaks.toml` from `secinfra_ref`, whose default is this release's
+   own tag. The release commit **must bump that default** to the new tag before it
+   is tagged. Leaving it at `v1.1.1` makes every consumer's Scan fail at the guard
+   step (the file does not exist there) and run the broken TOML.
+4. Tag the release, then advance `v1` (§1 step 5).
+
+**Rollback:** re-point `v1` at the previous release
+(`git tag -f -a v1 <previous-sha> && git push origin v1 --force`). A consumer can
+also pin `@v1.1.1` immediately.

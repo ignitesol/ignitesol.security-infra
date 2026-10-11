@@ -23,6 +23,7 @@ from .common.github import repo_name, run_url, sha_short
 from .common.mailer import send
 from .common.render import render_html, render_text
 from .common.sarif import count_by_severity, load_all_findings
+from .scan_guard import unhealthy_scanners
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -38,7 +39,10 @@ def main(argv: list[str] | None = None) -> int:
     security_cc = os.environ.get("SECINFRA_SECURITY_CC", "")
     cc = [security_cc] if security_cc else []
 
-    findings = load_all_findings(results_dir)
+    scanner_failures = unhealthy_scanners(results_dir)
+    findings = load_all_findings(
+        results_dir, skip_tools={s.scanner for s in scanner_failures}
+    )
     counts = count_by_severity(findings)
     top_findings = findings[:20]
 
@@ -50,9 +54,13 @@ def main(argv: list[str] | None = None) -> int:
         "counts": counts,
         "total": len(findings),
         "has_findings": bool(findings),
+        "scanner_failures": scanner_failures,
     }
 
     subject = f"[security] {repo_name()} — {len(findings)} finding(s)"
+    if scanner_failures:
+        names = ", ".join(s.scanner for s in scanner_failures)
+        subject += f" — SCANNER FAILED: {names}"
     html = render_html("security", **ctx)
     text = render_text("security", **ctx)
 
