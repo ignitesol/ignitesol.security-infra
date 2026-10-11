@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Collection
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -85,20 +86,29 @@ def load_sarif(path: Path, tool: str) -> list[Finding]:
 
 
 def load_gitleaks_json(path: Path) -> list[Finding]:
-    """Parse Gitleaks --report-format json output."""
+    """Parse Gitleaks --report-format json output.
+
+    The report's `Match`/`Secret` fields hold the leaked text itself, so they
+    are deliberately never copied into a Finding: findings flow into emails
+    and run logs. The workflow also passes `--redact`, which blanks them in
+    the report as defense in depth.
+    """
     data = json.loads(path.read_text())
     if not data:
         return []
     findings = []
     for leak in data:
+        rule_id = leak.get("RuleID", "secret")
+        commit = (leak.get("Commit") or "")[:8]
+        where = f" in commit {commit}" if commit else ""
         findings.append(Finding(
             tool="gitleaks",
-            rule_id=leak.get("RuleID", "secret"),
+            rule_id=rule_id,
             title=leak.get("Description", "Secret detected"),
             severity=Severity.HIGH,
             file=leak.get("File", ""),
             line=leak.get("StartLine", 0),
-            message=f"Match: {leak.get('Match', '')}",
+            message=f"Secret matched rule {rule_id}{where} (value redacted)",
         ))
     return findings
 
@@ -163,16 +173,28 @@ def count_by_severity(findings: list[Finding]) -> dict[str, int]:
     return {k: v for k, v in counts.items() if v > 0}
 
 
-def load_all_findings(results_dir: Path) -> list[Finding]:
-    """Load + normalize every System 1 result file present in results_dir."""
+def load_all_findings(
+    results_dir: Path, skip_tools: Collection[str] = ()
+) -> list[Finding]:
+    """Load + normalize every System 1 result file present in results_dir.
+
+    `skip_tools` names scanners recorded as failed (see scan_guard): their
+    output may be truncated or empty, and the caller reports the failure
+    itself, so it is not parsed here. A corrupt file from a scanner NOT
+    listed still raises.
+    """
     findings: list[Finding] = []
 
     gitleaks = results_dir / "gitleaks.json"
-    if gitleaks.exists() and gitleaks.stat().st_size > 2:
+    if (
+        "gitleaks" not in skip_tools
+        and gitleaks.exists()
+        and gitleaks.stat().st_size > 2
+    ):
         findings.extend(load_gitleaks_json(gitleaks))
 
     semgrep = results_dir / "semgrep.sarif"
-    if semgrep.exists():
+    if "semgrep" not in skip_tools and semgrep.exists():
         findings.extend(load_sarif(semgrep, "semgrep"))
 
     trivy_sca = results_dir / "trivy-sca.json"

@@ -9,7 +9,7 @@ title = "IgniteSol Gitleaks Config"
 useDefault = true
 
 # Allow bot/test patterns to reduce false positives
-[[allowlist]]
+[[allowlists]]
 description = "Test / example patterns"
 regexes = [
   '''example[_-]?api[_-]?key''',
