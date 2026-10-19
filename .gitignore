@@ -9,3 +9,5 @@ results/
 .bumblebee-src/
 .secinfra/
 .caller-repo/
+.coverage
+.pytest_cache/

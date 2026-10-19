@@ -1,7 +1,11 @@
 # System 1 — Security Scan (reusable workflow)
 #
 # Runs: Gitleaks (secrets) + Semgrep (SAST) + Trivy fs (SCA) + Trivy config (IaC)
-# Two-job pattern: scan (credential-less) → notify (SES + OIDC).
+# Three-job pattern: scan (credential-less) → notify (SES + OIDC) + gate.
+#
+# Gitleaks and Semgrep are health-checked (scripts/secinfra/scan_guard.py): a
+# scanner that fails to load its config/rules turns the Scan job red and is
+# called out in the email and the gate, instead of reporting a false "clean".
 #
 # Adopt in your repo:
 #   jobs:
@@ -69,7 +73,9 @@ jobs:
           repository: ignitesol/ignitesol.security-infra
           path: .secinfra
           ref: ${{ inputs.secinfra_ref }}
-          sparse-checkout: config
+          sparse-checkout: |
+            config
+            scripts/secinfra
 
       - name: Install tools
         run: |
@@ -88,28 +94,52 @@ jobs:
       - name: Create results directory
         run: mkdir -p results
 
+      # The scanner's exit status is captured (not swallowed) and handed to
+      # scan_guard.py, which validates it and the output file. continue-on-error
+      # lets the remaining scanners and the artifact upload still run; the
+      # "Enforce scanner health" step below turns the job red at the end.
       - name: Gitleaks — secrets scan
+        env:
+          SCAN_ROOT: ${{ inputs.scan_root }}
         run: |
+          rc=0
+          # --exit-code 0: leaks never change the exit status, so any non-zero
+          # exit is a real error (e.g. the config failed to load).
+          # --redact: keep the leaked value out of the report, logs and email.
           gitleaks detect \
-            --source "${{ inputs.scan_root }}" \
+            --source "$SCAN_ROOT" \
             --config .secinfra/config/defaults/gitleaks.toml \
             --report-format json \
             --report-path results/gitleaks.json \
+            --redact \
             --exit-code 0 \
-            --log-level warn
+            --log-level warn || rc=$?
+          python3 .secinfra/scripts/secinfra/scan_guard.py record gitleaks \
+            --exit-code "$rc" --results-dir results
         continue-on-error: true
 
       - name: Semgrep — SAST scan
         env:
+          SCAN_ROOT: ${{ inputs.scan_root }}
           SEMGREP_RULES: ${{ inputs.semgrep_rules || 'p/default p/owasp-top-ten p/secrets' }}
         run: |
+          # One --config flag per ruleset: a single space-joined argument is
+          # read as ONE config name, loads zero rules and exits quietly.
+          config_args=()
+          while IFS= read -r arg; do
+            config_args+=("$arg")
+          done < <(
+            python3 .secinfra/scripts/secinfra/scan_guard.py semgrep-args "$SEMGREP_RULES"
+          )
+          rc=0
           semgrep \
-            --config "$SEMGREP_RULES" \
+            "${config_args[@]}" \
             --sarif \
             --output results/semgrep.sarif \
             --no-autofix \
-            "${{ inputs.scan_root }}" \
-            || true
+            "$SCAN_ROOT" || rc=$?
+          python3 .secinfra/scripts/secinfra/scan_guard.py record semgrep \
+            --exit-code "$rc" --results-dir results
         continue-on-error: true
 
       - name: Trivy — SCA (dependency CVEs)
@@ -145,10 +175,19 @@ jobs:
           path: results/
           retention-days: 7
 
+      # Runs last so a broken scanner never costs us the artifact. Fails the
+      # job if gitleaks/semgrep did not run correctly or never reported.
+      - name: Enforce scanner health
+        run: |
+          python3 .secinfra/scripts/secinfra/scan_guard.py enforce \
+            --results-dir results
+
   # ── Job 2: notify — download artifact, render + send email ─────────────────
   notify:
     name: Notify
     needs: scan
+    # Still report (and say the scan was incomplete) when a scanner broke.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
       id-token: write   # OIDC → SES role
@@ -215,6 +254,9 @@ jobs:
   gate:
     name: Gate
     needs: scan
+    # Run even when Scan is red so the gate can fail closed on a broken
+    # scanner; a skipped required check would otherwise count as passing.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
       contents: read

@@ -17,6 +17,10 @@ Gitleaks (secret) findings always fail the gate once fail_on is set to any
 tier, regardless of how lenient that tier is — a checked-in credential is
 categorically different from a graded SAST/SCA severity.
 
+The gate also fails closed (once fail_on is set) when the scan job recorded a
+scanner as unhealthy in results/scan-health.json: "no findings" from a
+scanner that never ran is not a pass.
+
 Usage:
     python -m secinfra.security_gate --results-dir results/ --workspace .
 """
@@ -33,6 +37,7 @@ from .common.sarif import (
     load_all_findings,
     meets_threshold,
 )
+from .scan_guard import unhealthy_scanners
 
 _VALID_TIERS = {"critical", "high", "medium", "low"}
 
@@ -49,7 +54,8 @@ def main(argv: list[str] | None = None) -> int:
     config = RepoConfig.load(args.workspace)
     gate = config.systems.security
 
-    findings = load_all_findings(results_dir)
+    broken = unhealthy_scanners(results_dir)
+    findings = load_all_findings(results_dir, skip_tools={b.scanner for b in broken})
     counts = count_by_severity(findings)
     print(f"Total findings: {len(findings)}")
     for sev, n in counts.items():
@@ -71,6 +77,15 @@ def main(argv: list[str] | None = None) -> int:
             f"FAIL: invalid systems.security.fail_on value {gate.fail_on!r}; "
             f"expected one of {sorted(_VALID_TIERS)} or 'none'."
         )
+        return 1
+
+    if broken:
+        print(
+            f"FAIL: {len(broken)} scanner(s) did not run correctly, so the "
+            "results cannot be trusted as a pass."
+        )
+        for status in broken:
+            print(f"  - {status.scanner} did not run: {status.reason}")
         return 1
 
     secret_findings = [f for f in findings if f.tool == "gitleaks"]
