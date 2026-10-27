@@ -228,6 +228,7 @@ your default branch and no pull request is required. Override the branch name wi
   bumblebee-scan.yml     # reusable — System 2
   license-tracker.yml    # reusable — System 3
   self-test.yml          # CI for this repo
+  bump-catalog-pin.yml   # weekly PR to bump config/catalog-pin.txt
 
 scripts/secinfra/        # installable Python package
   common/
@@ -262,14 +263,14 @@ docs/
 
 **Bumping the bumblebee catalog pin**
 
-```bash
-# Find the latest bumblebee commit
-git ls-remote https://github.com/perplexityai/bumblebee HEAD
+The `Bump Catalog Pin` workflow opens a PR weekly (or on demand) when upstream
+bumblebee has new commits. Review the `threat_intel/` diff in the PR, merge, then
+advance the `v1` tag — see `docs/OPERATIONS.md` section 1. Manual bump:
 
-# Update the pin
+```bash
+git ls-remote https://github.com/perplexityai/bumblebee HEAD
 echo "<new-sha>" > config/catalog-pin.txt
 git commit -m "chore: bump bumblebee catalog pin to <short-sha>"
-# Open a PR — the security team reviews before merge
 ```
 
 **Debugging a failed OIDC assumption**
