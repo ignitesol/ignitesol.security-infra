@@ -24,6 +24,23 @@ class Match:
     detail: str = ""
 
 
+def count_packages_by_ecosystem(path: Path) -> dict[str, int]:
+    """Count `package` records per ecosystem (e.g. {"npm": 40, "pypi": 12})."""
+    counts: dict[str, int] = {}
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if record.get("record_type") == "package":
+            eco = record.get("ecosystem", "")
+            counts[eco] = counts.get(eco, 0) + 1
+    return counts
+
+
 def parse_ndjson(path: Path) -> tuple[int, list[Match]]:
     """Return (component_count, matches)."""
     component_count = 0

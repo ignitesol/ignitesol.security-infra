@@ -171,6 +171,64 @@ systems:
 Bumblebee's exposure records carry no documented severity taxonomy upstream, so
 gating is boolean: any match against a threat-intel catalog fails the build.
 
+### Python: require uv.lock
+
+```yaml
+python:
+  require_uv_lock: true     # default false
+  lock_exclude: []          # repo-relative paths to ignore (fixtures, vendored code)
+```
+
+With this on, the Bumblebee workflow's **Gate** job (`bumblebee / Gate`) fails
+unless every Python project in the repo is locked with [uv](https://docs.astral.sh/uv/).
+Projects are found by walking the repo for `pyproject.toml` (with a `[project]`,
+`[tool.uv]` or `[tool.poetry]` table), `requirements*.txt`, `setup.py`,
+`setup.cfg`, `Pipfile` and `poetry.lock`; `node_modules`, virtualenvs and
+`lock_exclude` paths are skipped. A repo with no Python projects passes.
+
+| Violation | Meaning |
+|---|---|
+| `missing-uv-lock` | No `uv.lock` governs the project. The message names what it uses instead (poetry, pipenv, bare `requirements.txt`). |
+| `mixed-locker` | `uv.lock` coexists with `poetry.lock` / `Pipfile.lock` / `[tool.poetry]`. uv must be the only locker. |
+| `invalid-uv-lock` | `uv.lock` doesn't parse or lists no packages. |
+| `stale-uv-lock` | `uv lock --check` reports the lock no longer matches `pyproject.toml`. Run `uv lock` and commit. |
+| `bad-pyproject` | `pyproject.toml` doesn't parse. |
+| `uv-unavailable` | `uv` wasn't on `PATH`, so freshness couldn't be proven. The gate fails closed. |
+
+A project is governed by a `uv.lock` in its own directory, or by an ancestor's
+`uv.lock` when that ancestor lists it under `[tool.uv.workspace] members`.
+Multi-service repos (e.g. one Lambda per directory) need a `pyproject.toml` +
+`uv.lock` per service, or a uv workspace. A `requirements.txt` next to a
+`uv.lock` is fine — generate it with `uv export` for tools that need one.
+
+Things to know:
+
+- Requirements files that aren't part of a uv project (`docs/requirements.txt`
+  for Read the Docs, `.github/scripts/requirements.txt`) are Python projects as
+  far as this gate is concerned and fail it. List them in `lock_exclude`, or
+  give them a `pyproject.toml` and `uv.lock`. `lock_exclude` is also honoured by
+  the Bumblebee scan and the License tracker, so an excluded `uv.lock` is never
+  synced.
+- uv workspaces: a member is covered by the root `uv.lock` only if it matches
+  `[tool.uv.workspace] members` and not `exclude`.
+- `uv lock --check` resolves against the package indexes, so the Gate job must
+  be able to reach them. Repos on a private index need to supply credentials to
+  that job themselves; this workflow doesn't pass any.
+- Separately, with `systems.bumblebee.fail_on: any` the Bumblebee gate refuses
+  to pass when `uv.lock` lists third-party packages but the scan recorded no
+  PyPI packages (an empty scan is not a clean one).
+- Independent of `require_uv_lock`, the Bumblebee scan job installs every `uv.lock`
+  project with `uv sync --frozen` (one venv per project) so it scans exactly the
+  locked versions, and a failed sync fails the Scan job. The License tracker does
+  the same into one shared venv (if two projects pin different versions of a
+  package, only the last one synced appears in the license list).
+- If the Scan job fails, the Bumblebee and License Gate jobs still run and **fail
+  closed** for repos that have opted in (`fail_on: any`, or a license policy). A
+  skipped required check counts as passing in GitHub, so the gates never rely on
+  being skipped.
+- Like every gate here, this only blocks merges if the caller's workflow runs on
+  `pull_request` and `bumblebee / Gate` is a required status check (below).
+
 ### License tracker
 
 ```yaml

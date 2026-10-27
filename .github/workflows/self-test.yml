@@ -38,6 +38,10 @@ jobs:
           curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
             | sudo tar -xz -C /usr/local/bin gitleaks
           pip install --quiet semgrep
+      # Real uv so the uv.lock tests exercise `uv lock` / `uv sync` instead of skipping.
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        with:
+          enable-cache: false
       - run: pip install --quiet ".[dev]"
       - run: pytest --cov=secinfra --cov-report=term-missing
         env:

@@ -21,6 +21,13 @@ systems:
   #   enabled: true
   #   fail_on: any     # none (default) | any — no severity tiers upstream
 
+# Optional: require every Python project to be locked with uv. The bumblebee
+# workflow's Gate job fails any project without a committed, current uv.lock
+# (or one poetry/pipenv/requirements-only project). Off by default.
+# python:
+#   require_uv_lock: true
+#   lock_exclude: []     # repo-relative paths to ignore
+
 license:
   # Subset of ecosystems present in your repo
   ecosystems:
