@@ -9,6 +9,10 @@
 #       uses: ignitesol/ignitesol.security-infra/.github/workflows/bumblebee-scan.yml@v1
 #       secrets: inherit
 #
+# Python repos can also require uv-locked dependencies
+# (`python.require_uv_lock: true` in .security/config.yml); the Gate job then
+# fails any Python project without a committed, current uv.lock.
+#
 # Optional inputs: scan_profile, scan_max_duration, secinfra_ref (pin the
 # internal scripts/config checkout to match your `uses:` ref exactly).
 
@@ -84,36 +88,36 @@ jobs:
       # (and any node_modules metadata) directly during the --root . walk.
       #
       # PyPI is install-only: bumblebee's Python sources are install artifacts
-      # (*.dist-info/METADATA), never requirements.txt. We materialize each
-      # requirements file into its OWN venv so per-function pinned versions
-      # don't clobber each other in a shared environment, then scan each venv
-      # as an explicit --root. Venvs live in $RUNNER_TEMP (outside the
-      # checkout) so the --root . npm walk doesn't re-scan them.
+      # (*.dist-info/METADATA), never uv.lock or requirements.txt. So
+      # secinfra.python_envs materializes each uv.lock project into its OWN
+      # venv with `uv sync --frozen` (exactly the locked versions; per-service
+      # pins can't clobber each other) and we scan each venv as an explicit
+      # --root. A failed uv sync fails this job: a lock we couldn't install is
+      # a project that would otherwise be silently unscanned. Directories with
+      # only a requirements*.txt (no uv.lock) keep the old best-effort pip
+      # venv, warn-only, until they migrate. Venvs live in $RUNNER_TEMP
+      # (outside the checkout) so the --root . npm walk doesn't re-scan them.
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
         with:
           python-version: "3.12"
 
-      - name: Build per-function Python venvs (PyPI on-disk metadata)
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        with:
+          enable-cache: false   # no cross-run cache in a security scan
+
+      # secinfra goes in the setup-python interpreter, not the per-project
+      # venvs, so it never shows up in what bumblebee scans.
+      - name: Install secinfra
+        run: pip install --quiet .secinfra/
+
+      - name: Build per-project Python venvs (PyPI on-disk metadata)
         run: |
-          venv_base="$RUNNER_TEMP/secinfra-venvs"
-          roots_file="$RUNNER_TEMP/secinfra-venv-roots"
-          mkdir -p "$venv_base"
-          : > "$roots_file"
-          find . -name "requirements*.txt" \
-               -not -path '*/.secinfra/*' \
-               -not -path '*/.bumblebee-src/*' \
-               -not -path '*/node_modules/*' | while read -r req; do
-            slug=$(printf '%s' "${req#./}" | tr '/.' '__')
-            venv="$venv_base/$slug"
-            echo "--- venv for $req -> $venv ---"
-            python -m venv "$venv" 2>/dev/null || continue
-            "$venv/bin/pip" install --quiet --upgrade pip 2>/dev/null || true
-            "$venv/bin/pip" install --quiet -r "$req" 2>/dev/null || true
-            echo "$venv" >> "$roots_file"
-          done
-          echo "Built venvs:"; cat "$roots_file" 2>/dev/null || echo "(none)"
-        continue-on-error: true
+          python -m secinfra.python_envs \
+            --workspace . \
+            --venv-base "$RUNNER_TEMP/secinfra-venvs" \
+            --roots-file "$RUNNER_TEMP/secinfra-venv-roots"
 
       - name: Create results directory
         run: |
@@ -223,6 +227,10 @@ jobs:
   gate:
     name: Gate
     needs: scan
+    # A failed scan would otherwise SKIP this job, and a skipped required
+    # check counts as passing. Run anyway; the gate fails closed on
+    # SECINFRA_SCAN_RESULT when the repo has opted in to blocking.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -244,6 +252,9 @@ jobs:
         with:
           name: bumblebee-results-${{ github.run_id }}
           path: results
+        # No artifact exists when the scan job failed; the gate script
+        # reads SECINFRA_SCAN_RESULT to decide what that means.
+        if: ${{ needs.scan.result == 'success' }}
 
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
@@ -253,7 +264,24 @@ jobs:
       - name: Install secinfra
         run: pip install --quiet .secinfra/
 
+      # uv is only needed for the lock-freshness check (`uv lock --check`).
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        with:
+          enable-cache: false   # no cross-run cache in a security scan
+
+      # Opt-in via python.require_uv_lock in .security/config.yml; passes
+      # unconditionally otherwise. Runs before the exposure gate and does not
+      # short-circuit it, so one run reports both failures.
+      - name: Require uv.lock for every Python project
+        run: |
+          python -m secinfra.python_lock_gate \
+            --workspace .caller-repo
+
       - name: Evaluate merge gate
+        if: ${{ !cancelled() }}
+        env:
+          SECINFRA_SCAN_RESULT: ${{ needs.scan.result }}
         run: |
           python -m secinfra.bumblebee_gate \
             --results-dir results \

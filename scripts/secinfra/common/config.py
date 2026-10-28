@@ -36,6 +36,27 @@ class LicenseConfig:
     policy: LicensePolicy = field(default_factory=LicensePolicy)
 
 
+def _as_bool(value: object) -> bool:
+    """YAML booleans, plus the quoted strings people write ("false", "true")."""
+    if isinstance(value, str):
+        return value.strip().lower() in {"true", "yes", "on", "1"}
+    return bool(value)
+
+
+@dataclass
+class PythonConfig:
+    """Python dependency-locking policy (uv only).
+
+    require_uv_lock: fail the lock gate unless every Python project in the
+        repo is governed by a committed, up-to-date uv.lock. Opt-in.
+    lock_exclude: repo-relative paths (fixtures, vendored code) the lock
+        gate ignores.
+    """
+
+    require_uv_lock: bool = False
+    lock_exclude: list[str] = field(default_factory=list)
+
+
 @dataclass
 class SystemGate:
     """Per-system enable flag + optional merge-gate threshold.
@@ -72,6 +93,7 @@ class RepoConfig:
     email: EmailConfig
     systems: SystemsConfig = field(default_factory=SystemsConfig)
     license: LicenseConfig = field(default_factory=LicenseConfig)
+    python: PythonConfig = field(default_factory=PythonConfig)
     paths: dict[str, str] = field(default_factory=lambda: {"scan_root": "."})
 
     @classmethod
@@ -96,6 +118,10 @@ class RepoConfig:
         paths_data = data.get("paths", {"scan_root": "."})
 
         policy_data = license_data.get("policy", {})
+        python_data = data.get("python") or {}
+        lock_exclude = python_data.get("lock_exclude") or []
+        if isinstance(lock_exclude, str):
+            lock_exclude = [lock_exclude]
 
         return cls(
             email=EmailConfig(to=to_list),
@@ -115,6 +141,10 @@ class RepoConfig:
                         for k, v in (policy_data.get("overrides", {}) or {}).items()
                     },
                 ),
+            ),
+            python=PythonConfig(
+                require_uv_lock=_as_bool(python_data.get("require_uv_lock", False)),
+                lock_exclude=[str(p) for p in lock_exclude],
             ),
             paths=paths_data,
         )

@@ -111,6 +111,62 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Set up uv
+        if: contains(inputs.ecosystems, 'python')
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        with:
+          enable-cache: false   # no cross-run cache in a compliance scan
+
+      # One venv for every Python install below, so pip-licenses reports
+      # exactly what was installed rather than whatever the runner image ships.
+      # python.lock_exclude (from .security/config.yml) is written out first,
+      # with pyyaml installed into the setup-python interpreter only, so
+      # neither it nor anything else lands in the license venv.
+      - name: Python — create environment
+        if: contains(inputs.ecosystems, 'python')
+        run: |
+          pip install --quiet pyyaml
+          python3 - <<'EOF' > "$RUNNER_TEMP/uv-lock-excludes"
+          import pathlib
+          import yaml
+
+          cfg_path = pathlib.Path(".security/config.yml")
+          cfg = (yaml.safe_load(cfg_path.read_text()) or {}) if cfg_path.exists() else {}
+          excludes = (cfg.get("python") or {}).get("lock_exclude") or []
+          if isinstance(excludes, str):
+              excludes = [excludes]
+          for e in excludes:
+              print(str(e).strip().removeprefix("./").rstrip("/"))
+          EOF
+          python -m venv "$RUNNER_TEMP/secinfra-license-venv"
+          echo "VIRTUAL_ENV=$RUNNER_TEMP/secinfra-license-venv" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/secinfra-license-venv/bin" >> "$GITHUB_PATH"
+
+      # uv.lock projects install the LOCKED versions, so the license list is
+      # for what actually ships. Deliberately not continue-on-error: a lock
+      # that won't install would otherwise drop its deps from the license
+      # report and let deny_unknown / deny pass vacuously (the Gate job fails
+      # closed when this job fails and a policy is set). --inexact keeps
+      # packages already installed from other projects in the shared env.
+      - name: Python — install locked deps (uv.lock)
+        if: contains(inputs.ecosystems, 'python')
+        run: |
+          find . -name uv.lock \
+               -not -path '*/node_modules/*' \
+               -not -path '*/.venv/*' | while read -r lock; do
+            dir=$(dirname "$lock"); dir="${dir#./}"
+            skip=0
+            while read -r ex; do
+              [ -n "$ex" ] && { [ "$dir" = "$ex" ] || [[ "$dir" == "$ex"/* ]]; } && skip=1
+            done < "$RUNNER_TEMP/uv-lock-excludes"
+            if [ "$skip" = 1 ]; then echo "--- skip excluded $dir ---"; continue; fi
+            echo "--- uv sync --frozen in $dir ---"
+            # UV_PROJECT_ENVIRONMENT: sync into the shared venv, not <dir>/.venv
+            (cd "$dir" && UV_PROJECT_ENVIRONMENT="$VIRTUAL_ENV" \
+               uv sync --frozen --inexact --all-packages --all-groups \
+               --all-extras --no-install-workspace)
+          done
+
       - name: Python — install (all manifest locations)
         if: contains(inputs.ecosystems, 'python')
         run: |
@@ -124,6 +180,9 @@ jobs:
           find . \( -name "pyproject.toml" -o -name "setup.py" \) \
                -not -path '*/node_modules/*' | while read manifest; do
             dir=$(dirname "$manifest")
+            # uv.lock projects were installed (locked) above; don't let pip
+            # re-resolve them unlocked.
+            [ -f "$dir/uv.lock" ] && continue
             echo "--- pip install $dir ---"
             pip install --quiet "$dir" 2>/dev/null || true
           done
@@ -302,6 +361,10 @@ jobs:
   gate:
     name: Gate
     needs: scan
+    # A failed scan would otherwise SKIP this job, and a skipped required
+    # check counts as passing. Run anyway; the gate fails closed on
+    # SECINFRA_SCAN_RESULT when the repo has opted in to blocking.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -323,6 +386,9 @@ jobs:
         with:
           name: license-results-${{ github.run_id }}
           path: results
+        # No artifact exists when the scan job failed; the gate script
+        # reads SECINFRA_SCAN_RESULT to decide what that means.
+        if: ${{ needs.scan.result == 'success' }}
 
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
@@ -333,6 +399,8 @@ jobs:
         run: pip install --quiet .secinfra/
 
       - name: Evaluate merge gate
+        env:
+          SECINFRA_SCAN_RESULT: ${{ needs.scan.result }}
         run: |
           python -m secinfra.license_gate \
             --results-dir results \

@@ -239,6 +239,9 @@ scripts/secinfra/        # installable Python package
   templates/             # Jinja2 email templates (8 files)
   security_report.py     # System 1 notify entry point
   bumblebee_report.py    # System 2 notify entry point
+  bumblebee_gate.py      # System 2 merge gate (exposure matches, PyPI coverage)
+  python_lock_gate.py    # opt-in gate: every Python project locked with uv.lock
+  python_envs.py         # builds per-project venvs (uv sync --frozen) for the scan
   license_report.py      # System 3 notify entry point
   onboard.py             # secinfra-onboard CLI
 
