@@ -1,0 +1,159 @@
+# Opens (or refreshes) a PR that bumps config/catalog-pin.txt to the latest
+# perplexityai/bumblebee commit. It never merges: the security team reviews the
+# threat_intel diff in the PR body, merges, then advances the moving v1 tag by
+# hand (see docs/OPERATIONS.md section 1).
+#
+# PRs opened with GITHUB_TOKEN do not trigger other workflows, so Self-Test
+# will not run on the bump PR. The change is a single-line pin file.
+# Requires the setting "Allow GitHub Actions to create and approve pull
+# requests" (repo or org: Settings > Actions > General).
+
+name: Bump Catalog Pin
+
+on:
+  schedule:
+    - cron: "0 4 * * 1"  # Mondays 04:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: bump-catalog-pin
+  cancel-in-progress: false
+
+env:
+  UPSTREAM_REPO: https://github.com/perplexityai/bumblebee
+  PIN_FILE: config/catalog-pin.txt
+  BUMP_BRANCH: automation/bump-catalog-pin
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  bump:
+    name: Bump bumblebee catalog pin
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+
+      - name: Resolve current and upstream pins
+        id: pins
+        run: |
+          set -euo pipefail
+          current=$(tr -d '[:space:]' < "$PIN_FILE")
+          latest=$(git ls-remote "$UPSTREAM_REPO" HEAD | cut -f1)
+
+          for sha in "$current" "$latest"; do
+            if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::Not a 40-char commit SHA: '$sha' (pin file or upstream lookup is broken)"
+              exit 1
+            fi
+          done
+
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "Current pin: $current"
+          echo "Upstream HEAD: $latest"
+
+      - name: Close stale bump PR if pin is already current
+        if: steps.pins.outputs.current == steps.pins.outputs.latest
+        run: |
+          set -euo pipefail
+          echo "Pin is up to date."
+          pr=$(gh pr list --head "$BUMP_BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$pr" ]; then
+            gh pr close "$pr" --delete-branch \
+              --comment "Closing: config/catalog-pin.txt already matches upstream HEAD."
+          fi
+
+      - name: Build review summary
+        if: steps.pins.outputs.current != steps.pins.outputs.latest
+        env:
+          CURRENT: ${{ steps.pins.outputs.current }}
+          LATEST: ${{ steps.pins.outputs.latest }}
+        run: |
+          set -euo pipefail
+          src="$RUNNER_TEMP/bumblebee-review"
+          git clone --quiet --no-checkout --filter=blob:none "$UPSTREAM_REPO" "$src"
+
+          # A pin that is not an ancestor of the new commit means upstream
+          # rewrote history; the reviewer must know before trusting the diff.
+          if git -C "$src" merge-base --is-ancestor "$CURRENT" "$LATEST"; then
+            lineage="Current pin is an ancestor of the new commit (normal fast-forward)."
+          else
+            lineage="WARNING: current pin is NOT an ancestor of the new commit. Upstream history may have been rewritten. Review with extra care."
+          fi
+
+          removed=$(git -C "$src" diff --diff-filter=D --name-only "$CURRENT" "$LATEST" -- threat_intel/)
+          added=$(git -C "$src" diff --diff-filter=A --name-only "$CURRENT" "$LATEST" -- threat_intel/)
+          # `|| true`: head closing the pipe early would SIGPIPE git under pipefail.
+          stat=$(git -C "$src" diff --stat=100 "$CURRENT" "$LATEST" -- threat_intel/ | head -n 100 || true)
+          commits=$(git -C "$src" log --oneline --no-decorate -n 50 "$CURRENT..$LATEST")
+
+          {
+            echo "Bumps \`$PIN_FILE\` from \`${CURRENT:0:7}\` to \`${LATEST:0:7}\`."
+            echo
+            echo "Upstream compare: $UPSTREAM_REPO/compare/${CURRENT}...${LATEST}"
+            echo
+            echo "$lineage"
+            echo
+            echo "### threat_intel changes"
+            echo
+            if [ -n "$removed" ]; then
+              echo "**Removed catalogs (review carefully):**"
+              echo '```'
+              echo "$removed"
+              echo '```'
+            fi
+            if [ -n "$added" ]; then
+              echo "**New catalogs:**"
+              echo '```'
+              echo "$added"
+              echo '```'
+            fi
+            echo "**Diff stat (first 100 lines):**"
+            echo '```'
+            echo "${stat:-no changes under threat_intel/}"
+            echo '```'
+            echo
+            echo "### Upstream commits (up to 50)"
+            echo '```'
+            echo "$commits"
+            echo '```'
+            echo
+            echo "### Checklist"
+            echo "- [ ] Reviewed threat_intel diff, no unexpected catalog removals"
+            echo "- [ ] New catalogs (if any) are understood and expected"
+            echo "- [ ] At least one team member has reviewed the diff"
+            echo "- [ ] After merge: advance the \`v1\` tag (docs/OPERATIONS.md section 1)"
+            echo
+            echo "_Opened automatically by the Bump Catalog Pin workflow._"
+          } > "$RUNNER_TEMP/pr-body.md"
+
+      - name: Commit and open or update PR
+        if: steps.pins.outputs.current != steps.pins.outputs.latest
+        env:
+          LATEST: ${{ steps.pins.outputs.latest }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          short="${LATEST:0:7}"
+          title="chore: bump bumblebee catalog pin to $short"
+
+          echo "$LATEST" > "$PIN_FILE"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BUMP_BRANCH"
+          git add "$PIN_FILE"
+          git commit -m "$title"
+          git push --force origin "$BUMP_BRANCH"
+
+          pr=$(gh pr list --head "$BUMP_BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$pr" ]; then
+            gh pr edit "$pr" --title "$title" --body-file "$RUNNER_TEMP/pr-body.md"
+            echo "Updated PR #$pr"
+          else
+            gh pr create --base "$DEFAULT_BRANCH" \
+              --head "$BUMP_BRANCH" --title "$title" --body-file "$RUNNER_TEMP/pr-body.md"
+          fi
