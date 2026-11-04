@@ -10,22 +10,29 @@ The bumblebee threat-intel catalogs are pinned to a specific commit in
 `config/catalog-pin.txt`. Bump this whenever a meaningful new catalog version is
 released upstream.
 
+**Automated:** the `Bump Catalog Pin` workflow (`.github/workflows/bump-catalog-pin.yml`)
+runs every Monday 04:00 UTC (and on demand via *Run workflow*). When upstream HEAD
+differs from the pin it opens a PR from `automation/bump-catalog-pin` with the
+`threat_intel/` diff stat, added/removed catalogs, upstream commits, and a warning
+if the old pin is no longer an ancestor (rewritten upstream history). It never
+merges, and it refreshes the same PR if upstream moves again before review. It
+needs the setting *Allow GitHub Actions to create and approve pull requests*
+(Settings > Actions > General). Because the PR is opened with `GITHUB_TOKEN`,
+Self-Test does not run on it.
+
 **Process:**
 
-1. Check upstream for new commits:
+1. Review the bump PR the workflow opened. To inspect the diff locally:
    ```bash
-   git ls-remote https://github.com/perplexityai/bumblebee HEAD
-   ```
-2. Review the diff since the current pin — look at `threat_intel/*.json` changes:
-   ```bash
+   git clone --no-checkout --filter=blob:none https://github.com/perplexityai/bumblebee /tmp/bumblebee-review
    git -C /tmp/bumblebee-review diff <current-pin> <new-sha> -- threat_intel/
    ```
-3. Open a PR updating `config/catalog-pin.txt` to the new SHA.
-4. PR checklist before merging:
+2. PR checklist before merging:
    - [ ] Reviewed threat_intel diff — no unexpected catalog removals
    - [ ] New catalogs (if any) are understood and expected
    - [ ] At least one team member has reviewed the diff
-5. After merge, advance the moving `v1` tag:
+3. Merge the PR. (To bump by hand instead, edit `config/catalog-pin.txt` and open a PR.)
+4. After merge, advance the moving `v1` tag:
    ```bash
    git tag -f -a v1 -m "secinfra v1 — bump bumblebee catalog to <new-sha>"
    git push origin v1 --force
