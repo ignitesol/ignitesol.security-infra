@@ -35,6 +35,7 @@ from pathlib import Path
 
 from .common.config import RepoConfig
 from .common.license import apply_overrides, load_current
+from .common.scan_result import scan_job_failed
 
 _UNKNOWN_LICENSES = {"", "unknown", "none", "noassertion"}
 
@@ -109,6 +110,18 @@ def main(argv: list[str] | None = None) -> int:
     config = RepoConfig.load(args.workspace)
     gate = config.systems.license
     policy = config.license.policy
+
+    if (
+        gate.enabled
+        and (policy.deny or policy.deny_unknown)
+        and scan_job_failed()
+    ):
+        print(
+            "FAIL: the scan job did not succeed, so the dependency list is "
+            "incomplete and a clean policy result would be meaningless "
+            "(see the Scan job's log)."
+        )
+        return 1
 
     current = load_current(results_dir)
     current, applied_overrides = apply_overrides(current, policy.overrides)

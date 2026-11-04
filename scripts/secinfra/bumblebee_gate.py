@@ -22,13 +22,26 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
-from .common.bumblebee import parse_ndjson
+from .common.bumblebee import count_packages_by_ecosystem, parse_ndjson
 from .common.config import RepoConfig
+from .common.python_projects import find_uv_lock_dirs, registry_package_count
+from .common.scan_result import scan_job_failed
 
 _VALID_TIERS = {"any"}
+
+
+def _python_coverage_missing(
+    workspace: Path, config: RepoConfig, ndjson_path: Path
+) -> bool:
+    """Locked third-party packages but zero PyPI records: the scan saw nothing."""
+    lock_dirs = find_uv_lock_dirs(workspace, config.python.lock_exclude)
+    if not any(registry_package_count(d) for d in lock_dirs):
+        return False
+    return count_packages_by_ecosystem(ndjson_path).get("pypi", 0) == 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -40,8 +53,16 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     results_dir = Path(args.results_dir)
-    config = RepoConfig.load(args.workspace)
+    workspace = Path(args.workspace or os.environ.get("GITHUB_WORKSPACE", "."))
+    config = RepoConfig.load(workspace)
     gate = config.systems.bumblebee
+
+    if gate.enabled and gate.fail_on == "any" and scan_job_failed():
+        print(
+            "FAIL: the scan job did not succeed, so there are no trustworthy "
+            "results to gate on (see the Scan job's log)."
+        )
+        return 1
 
     ndjson_path = results_dir / "bumblebee.ndjson"
     if not ndjson_path.exists():
@@ -67,6 +88,14 @@ def main(argv: list[str] | None = None) -> int:
         print(
             f"FAIL: invalid systems.bumblebee.fail_on value {gate.fail_on!r}; "
             f"expected 'any' or 'none'."
+        )
+        return 1
+
+    if _python_coverage_missing(workspace, config, ndjson_path):
+        print(
+            "FAIL: uv.lock lists third-party packages but the scan recorded no PyPI "
+            "packages. Bumblebee read nothing from the Python environment, "
+            "so a clean result would be meaningless."
         )
         return 1
 
